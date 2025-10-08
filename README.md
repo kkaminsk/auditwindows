@@ -1,6 +1,26 @@
 # auditwindows
 Windows Audit Application (PowerShell 7) to inventory Windows devices from Entra ID via Microsoft Graph and report BitLocker and LAPS posture.
 
+## Version
+
+1.0 (2025-10-08)
+
+## Author
+
+Kevin Kaminski
+
+## License
+
+MIT
+
+## Notes
+
+Use the following chatgpt chatbot to understand how to use the tool or interpret your results: ***Make sure to use a paid account for data privacy***
+
+https://chatgpt.com/g/g-68e6e364e48c8191993f38b9a190af02
+
+
+
 ## Overview
 
 `Get-EntraWindowsDevices.ps1` connects to Microsoft Graph using either delegated (interactive) or app-only (certificate) auth to enumerate Entra ID devices with operatingSystem = "Windows", enriches with Intune ManagedDevice info (last check-in), evaluates BitLocker key backup presence (and emits a per-drive `Encrypted` flag), checks LAPS credential availability, and writes results to an XML report with optional CSV summary. The script can also fall back to direct REST calls via `Invoke-MgGraphRequest` when Graph cmdlets are unavailable. All actions are logged to a timestamped log.
