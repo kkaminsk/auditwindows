@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="unqualified"
+           attributeFormDefault="unqualified">
+
+  <!-- GUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) -->
+  <xs:simpleType name="GuidType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Allow PowerShell-style 'True'/'False' in addition to XML boolean -->
+  <xs:simpleType name="BooleanText">
+    <xs:union>
+      <xs:simpleType>
+        <xs:restriction base="xs:boolean"/>
+      </xs:simpleType>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="True"/>
+          <xs:enumeration value="False"/>
+          <xs:enumeration value="1"/>
+          <xs:enumeration value="0"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+
+  <!-- BackedUp element can be a boolean or an ISO 8601 timestamp -->
+  <xs:simpleType name="BackedUpType">
+    <xs:union>
+      <xs:simpleType>
+        <xs:restriction base="xs:boolean"/>
+      </xs:simpleType>
+      <xs:simpleType>
+        <xs:restriction base="xs:dateTime"/>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+
+  <!-- Permit empty string or a valid xs:dateTime -->
+  <xs:simpleType name="OptionalDateTimeText">
+    <xs:union>
+      <xs:simpleType>
+        <xs:restriction base="xs:dateTime"/>
+      </xs:simpleType>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:length value="0"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+
+  <!-- Drive type attribute values -->
+  <xs:simpleType name="DriveTypeEnum">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="OperatingSystem"/>
+      <xs:enumeration value="Data"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="WindowsAudit">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Device" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Name" type="xs:string" minOccurs="0"/>
+              <xs:element name="DeviceID" type="GuidType" minOccurs="0"/>
+              <xs:element name="Enabled" type="BooleanText" minOccurs="0"/>
+              <xs:element name="UserPrincipalName" type="xs:string" minOccurs="0"/>
+              <xs:element name="MDM" type="xs:string" minOccurs="0"/>
+              <xs:element name="Activity" type="xs:string" minOccurs="0"/>
+              <xs:element name="LastCheckIn" type="OptionalDateTimeText" minOccurs="0"/>
+              <xs:element name="BitLocker" minOccurs="0">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Drive" minOccurs="0" maxOccurs="unbounded">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="BackedUp" type="BackedUpType"/>
+                        </xs:sequence>
+                        <xs:attribute name="type" type="DriveTypeEnum" use="required"/>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="LAPS" minOccurs="0">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Available" type="xs:boolean"/>
+                    <xs:element name="Retrieved" type="xs:boolean"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
