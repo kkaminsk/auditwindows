@@ -69,6 +69,8 @@
             <xs:sequence>
               <xs:element name="Name" type="xs:string" minOccurs="0"/>
               <xs:element name="DeviceID" type="GuidType" minOccurs="0"/>
+              <!-- Azure AD deviceId used for BitLocker/LAPS lookups -->
+              <xs:element name="AzureAdDeviceId" type="GuidType" minOccurs="0"/>
               <xs:element name="Enabled" type="BooleanText" minOccurs="0"/>
               <xs:element name="UserPrincipalName" type="xs:string" minOccurs="0"/>
               <xs:element name="MDM" type="xs:string" minOccurs="0"/>
@@ -81,6 +83,8 @@
                       <xs:complexType>
                         <xs:sequence>
                           <xs:element name="BackedUp" type="BackedUpType"/>
+                          <!-- True when a key is backed up in Entra for this drive -->
+                          <xs:element name="Encrypted" type="BooleanText"/>
                         </xs:sequence>
                         <xs:attribute name="type" type="DriveTypeEnum" use="required"/>
                       </xs:complexType>

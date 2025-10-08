@@ -9,7 +9,9 @@ param(
   [switch]$CreateAppIfMissing,
   [string]$AppName = 'WindowsAuditApp',
   [string]$TenantId,
-  [string]$CertSubject
+  [string]$CertSubject,
+  [switch]$SkipModuleImport,
+  [string]$DeviceName
 )
 
 $start = Get-Date
@@ -27,18 +29,49 @@ function Write-Log {
   switch ($Level) { 'ERROR' { Write-Error $Message } 'WARN' { Write-Warning $Message } 'DEBUG' { Write-Verbose $Message } default { Write-Verbose $Message } }
 }
 
+function Invoke-GraphGet {
+  param([Parameter(Mandatory=$true)][string]$RelativeUri)
+  $uri = "https://graph.microsoft.com/v1.0$RelativeUri"
+  Invoke-MgGraphRequest -Method GET -Uri $uri -OutputType PSObject -ErrorAction Stop
+}
+
+function Invoke-GraphGetAll {
+  param([Parameter(Mandatory=$true)][string]$RelativeUri)
+  $uri = "https://graph.microsoft.com/v1.0$RelativeUri"
+  $acc = @()
+  while ($true) {
+    $res = Invoke-MgGraphRequest -Method GET -Uri $uri -OutputType PSObject -ErrorAction Stop
+    if ($null -ne $res.value) {
+      $acc += $res.value
+      if ($res.'@odata.nextLink') { $uri = $res.'@odata.nextLink' } else { break }
+    } else {
+      # not a collection response; return as single-element array
+      $acc += $res
+      break
+    }
+  }
+  return $acc
+}
+
 Write-Log "Script start. OutputPath=$docs"
 
 function Import-GraphModuleIfNeeded {
   # Prefer targeted submodules to avoid meta-module assembly conflicts
   $neededModules = @(
     'Microsoft.Graph.Authentication',
-    'Microsoft.Graph.Applications',
-    'Microsoft.Graph.ServicePrincipals',
     'Microsoft.Graph.Identity.DirectoryManagement',
     'Microsoft.Graph.DeviceManagement',
     'Microsoft.Graph.InformationProtection'
   )
+  # Only load app management modules when app-only auth/provisioning is requested
+  if ($UseAppAuth -or $CreateAppIfMissing) {
+    $neededModules += @('Microsoft.Graph.Applications','Microsoft.Graph.ServicePrincipals')
+  }
+  # If keys exist but none classified, assume OS backed up to avoid false negatives
+  if (($keys -and $keys.Count -gt 0) -and (-not $osBacked -and -not $dataBacked)) {
+    $osBacked = $true
+    Write-Log ("BitLocker keys exist but volumeType was ambiguous; marking OS as backed up for device {0}" -f $d.Id) 'WARN'
+  }
   $cmdChecks = @{
     'Microsoft.Graph.Authentication'               = @('Connect-MgGraph','Get-MgContext')
     'Microsoft.Graph.Applications'                 = @('New-MgApplication','Update-MgApplication','Get-MgApplication')
@@ -288,16 +321,21 @@ function Ensure-AppRegistrationAndConnect {
   Write-Host ("Connected (app-only). Tenant={0} AppId={1}" -f $ctx2.TenantId, $app.AppId)
 }
 
-function Get-WindowsDirectoryDevices { Invoke-GraphWithRetry -OperationName 'Get-MgDevice' -Resource "GET /devices?$filter=operatingSystem eq 'Windows'" -Script { Get-MgDevice -Filter "operatingSystem eq 'Windows'" -All } }
-function Get-ManagedDeviceByAadId($id) { Invoke-GraphWithRetry -OperationName 'Get-MgDeviceManagementManagedDevice' -Resource "GET /deviceManagement/managedDevices?$filter=azureADDeviceId eq '$id'" -Script { Get-MgDeviceManagementManagedDevice -Filter "azureADDeviceId eq '$id'" -All } | Select-Object -First 1 }
-function Get-BitLockerKeysByDeviceId($id) { Invoke-GraphWithRetry -OperationName 'Get-MgInformationProtectionBitlockerRecoveryKey' -Resource "GET /informationProtection/bitlocker/recoveryKeys?`$filter=deviceId eq '$id'" -NonFatalStatusCodes @(404) -NonFatalReturn @() -Script { Get-MgInformationProtectionBitlockerRecoveryKey -Filter "deviceId eq '$id'" -All -ErrorAction Stop } }
-function Test-LapsAvailable($id) { $r = Invoke-GraphWithRetry -OperationName 'Get-MgDirectoryDeviceLocalCredential' -Resource "GET /directory/deviceLocalCredentials/$id" -NonFatalStatusCodes @(404) -NonFatalReturn $null -Script { Get-MgDirectoryDeviceLocalCredential -DeviceLocalCredentialInfoId $id -ErrorAction Stop }; return ($null -ne $r) }
+function Get-WindowsDirectoryDevices { Invoke-GraphWithRetry -OperationName 'Get-MgDevice' -Resource "GET /devices?`$select=id,displayName,deviceId,accountEnabled,operatingSystem&`$filter=operatingSystem eq 'Windows'" -Script { if (Get-Command Get-MgDevice -ErrorAction SilentlyContinue) { Get-MgDevice -Filter "operatingSystem eq 'Windows'" -All -ErrorAction Stop } else { Invoke-GraphGetAll "/devices?`$select=id,displayName,deviceId,accountEnabled,operatingSystem&`$filter=operatingSystem eq 'Windows'" } } }
+function Get-ManagedDeviceByAadId($azureId) { Invoke-GraphWithRetry -OperationName 'Get-MgDeviceManagementManagedDevice' -Resource "GET /deviceManagement/managedDevices?`$select=userPrincipalName,lastSyncDateTime,azureADDeviceId&`$filter=azureADDeviceId eq '$azureId'" -Script { if (Get-Command Get-MgDeviceManagementManagedDevice -ErrorAction SilentlyContinue) { Get-MgDeviceManagementManagedDevice -Filter "azureADDeviceId eq '$azureId'" -All -ErrorAction Stop } else { Invoke-GraphGetAll "/deviceManagement/managedDevices?`$select=userPrincipalName,lastSyncDateTime,azureADDeviceId&`$filter=azureADDeviceId eq '$azureId'" } } | Select-Object -First 1 }
+function Get-BitLockerKeysByDeviceId($azureId) { Invoke-GraphWithRetry -OperationName 'Get-MgInformationProtectionBitlockerRecoveryKey' -Resource "GET /informationProtection/bitlocker/recoveryKeys?`$select=id,deviceId,createdDateTime,volumeType&`$filter=deviceId eq '$azureId'" -NonFatalStatusCodes @(404) -NonFatalReturn @() -Script { if (Get-Command Get-MgInformationProtectionBitlockerRecoveryKey -ErrorAction SilentlyContinue) { Get-MgInformationProtectionBitlockerRecoveryKey -Filter "deviceId eq '$azureId'" -Property 'id','deviceId','createdDateTime','volumeType' -All -ErrorAction Stop } else { Invoke-GraphGetAll "/informationProtection/bitlocker/recoveryKeys?`$select=id,deviceId,createdDateTime,volumeType&`$filter=deviceId eq '$azureId'" } } }
+function Test-LapsAvailable($azureId) { $r = Invoke-GraphWithRetry -OperationName 'Get-MgDirectoryDeviceLocalCredential' -Resource "GET /directory/deviceLocalCredentials/$azureId" -NonFatalStatusCodes @(404) -NonFatalReturn $null -Script { if (Get-Command Get-MgDirectoryDeviceLocalCredential -ErrorAction SilentlyContinue) { Get-MgDirectoryDeviceLocalCredential -DeviceLocalCredentialInfoId $azureId -ErrorAction Stop } else { Invoke-GraphGet "/directory/deviceLocalCredentials/$azureId" } }; return ($null -ne $r) }
 
 function New-AuditXml { $xml = New-Object System.Xml.XmlDocument; $decl=$xml.CreateXmlDeclaration('1.0','UTF-8',$null); $xml.AppendChild($decl)|Out-Null; $root=$xml.CreateElement('WindowsAudit'); $xml.AppendChild($root)|Out-Null; return $xml }
 
 function Add-TextNode($xml,$parent,$name,$value) { $n=$xml.CreateElement($name); if ($null -ne $value -and "$value" -ne '') { $n.InnerText = [string]$value }; $parent.AppendChild($n)|Out-Null }
 
-Import-GraphModuleIfNeeded
+if (-not $SkipModuleImport) {
+  Import-GraphModuleIfNeeded
+} else {
+  Write-Log "Skipping module import due to -SkipModuleImport" 'INFO'
+  Write-Host "Skipping module import by request."
+}
 if ($UseAppAuth) {
   if (-not $TenantId -or $TenantId.Trim() -eq '') { throw "-TenantId is required when using -UseAppAuth." }
   Ensure-AppRegistrationAndConnect -Tenant $TenantId -Name $AppName -Create:$CreateAppIfMissing -Subject $CertSubject
@@ -310,6 +348,10 @@ Write-Log "Querying Windows devices from Entra ID..." 'INFO'
 $ctxMode = Get-MgContext
 Write-Log ("Auth mode: {0} | Tenant={1} | ClientId={2} | Account={3}" -f $ctxMode.AuthType, $ctxMode.TenantId, $ctxMode.ClientId, $ctxMode.Account) 'INFO'
 $devices = Get-WindowsDirectoryDevices
+if ($DeviceName) {
+  $devices = $devices | Where-Object { $_.DisplayName -eq $DeviceName }
+  Write-Log ("Filtering devices by name '{0}'. Matched: {1}" -f $DeviceName, ($devices | Measure-Object).Count) 'INFO'
+}
 Write-Log "Retrieved $($devices.Count) Windows devices." 'INFO'
 Write-Host ("Retrieved {0} Windows devices." -f $devices.Count)
 if ($MaxDevices -gt 0 -and $devices.Count -gt $MaxDevices) {
@@ -329,21 +371,47 @@ foreach ($d in $devices) {
   Write-Host ("Processing {0}/{1}: {2} [{3}]" -f $idx, $devices.Count, $d.DisplayName, $d.Id)
   $pct = [int](($idx / [double]$devices.Count) * 100)
   Write-Progress -Activity 'Exporting devices' -Status ("Processing {0}/{1}: {2}" -f $idx,$devices.Count,$d.DisplayName) -PercentComplete $pct
-  $md = Get-ManagedDeviceByAadId $d.Id
-  $keys = $null; try { $keys = Get-BitLockerKeysByDeviceId $d.Id } catch { Write-Log "BitLocker lookup failed for $($d.Id): $_" 'WARN' }
-  $lapsAvail = $false; try { $lapsAvail = Test-LapsAvailable $d.Id } catch { Write-Log "LAPS lookup failed for $($d.Id): $_" 'WARN' }
+  $aadId = if ($d.PSObject.Properties.Name -contains 'DeviceId' -and $d.DeviceId) { $d.DeviceId } else { $d.Id }
+  Write-Log ("Device identifiers: ObjectId={0} AzureAdDeviceId={1}" -f $d.Id, $aadId) 'DEBUG'
+  $md = Get-ManagedDeviceByAadId $aadId
+  $keys = @()
+  try { $keys = Get-BitLockerKeysByDeviceId $aadId } catch { Write-Log "BitLocker lookup failed for $($d.Id) (aadId): $_" 'WARN' }
+  if (($null -eq $keys) -or ($keys.Count -eq 0)) {
+    if ($aadId -ne $d.Id) {
+      Write-Log ("No BitLocker keys found with AzureAdDeviceId={0}. Falling back to ObjectId={1}." -f $aadId, $d.Id) 'DEBUG'
+      try { $keys = Get-BitLockerKeysByDeviceId $d.Id } catch { Write-Log "BitLocker fallback lookup failed for $($d.Id) (objectId): $_" 'WARN' }
+    }
+  }
+  Write-Log ("BitLocker keys count for device {0}: {1}" -f $d.Id, ($(if ($keys) { $keys.Count } else { 0 }))) 'DEBUG'
+  $lapsAvail = $false; try { $lapsAvail = Test-LapsAvailable $aadId } catch { Write-Log "LAPS lookup failed for $($d.Id): $_" 'WARN' }
 
   $osBacked=$false; $osTime=$null; $dataBacked=$false; $dataTime=$null
   foreach ($k in ($keys | ForEach-Object { $_ })) {
-    $vt = $k.AdditionalProperties.volumeType
-    $dt = $k.AdditionalProperties.createdDateTime
-    if ($vt -eq 'operatingSystemDrive' -or -not $vt) { $osBacked=$true; if ($dt) { $osTime=$dt } }
-    elseif ($vt -eq 'fixedDataDrive') { $dataBacked=$true; if ($dt) { $dataTime=$dt } }
+    # Extract properties from typed members or AdditionalProperties (SDK versions differ)
+    $vtRaw = $null
+    $dtRaw = $null
+    if ($k.PSObject.Properties.Name -contains 'VolumeType' -and $k.VolumeType) { $vtRaw = $k.VolumeType }
+    elseif ($k.AdditionalProperties -and $k.AdditionalProperties.ContainsKey('volumeType')) { $vtRaw = $k.AdditionalProperties.volumeType }
+    if ($k.PSObject.Properties.Name -contains 'CreatedDateTime' -and $k.CreatedDateTime) { $dtRaw = $k.CreatedDateTime }
+    elseif ($k.AdditionalProperties -and $k.AdditionalProperties.ContainsKey('createdDateTime')) { $dtRaw = $k.AdditionalProperties.createdDateTime }
+
+    $vt = if ($vtRaw) { $vtRaw.ToString().ToLowerInvariant() } else { $null }
+    # Normalize volume type across variants ('...Volume' vs '...Drive') and numeric enums
+    if ($vt -match 'operatingsystem(volume|drive)' -or $vt -eq 'os' -or $vt -eq '1' -or -not $vt) {
+      $osBacked = $true
+      if ($dtRaw) { $osTime = $dtRaw }
+    }
+    elseif ($vt -match 'fixeddata(volume|drive)' -or $vt -eq 'data' -or $vt -eq '2') {
+      $dataBacked = $true
+      if ($dtRaw) { $dataTime = $dtRaw }
+    }
+    Write-Log ("BitLocker key parsed: vt='{0}' dt='{1}' for device {2}" -f $vtRaw, $dtRaw, $d.Id) 'DEBUG'
   }
 
   $devEl = $xml.CreateElement('Device'); $root.AppendChild($devEl)|Out-Null
   Add-TextNode $xml $devEl 'Name' $d.DisplayName
   Add-TextNode $xml $devEl 'DeviceID' $d.Id
+  Add-TextNode $xml $devEl 'AzureAdDeviceId' $aadId
   Add-TextNode $xml $devEl 'Enabled' ([string]$d.AccountEnabled)
   Add-TextNode $xml $devEl 'UserPrincipalName' ($md.UserPrincipalName)
   Add-TextNode $xml $devEl 'MDM' ($(if ($md) {'Microsoft Intune'}))
@@ -353,15 +421,15 @@ foreach ($d in $devices) {
   Add-TextNode $xml $devEl 'LastCheckIn' $last
 
   $blEl=$xml.CreateElement('BitLocker'); $devEl.AppendChild($blEl)|Out-Null
-  $os=$xml.CreateElement('Drive'); $a=$xml.CreateAttribute('type'); $a.Value='OperatingSystem'; $os.Attributes.Append($a)|Out-Null; $b=$xml.CreateElement('BackedUp'); $b.InnerText = if ($osTime) { (Get-Date $osTime).ToUniversalTime().ToString('o') } elseif ($osBacked) {'true'} else {'false'}; $os.AppendChild($b)|Out-Null; $blEl.AppendChild($os)|Out-Null
-  $dd=$xml.CreateElement('Drive'); $a2=$xml.CreateAttribute('type'); $a2.Value='Data'; $dd.Attributes.Append($a2)|Out-Null; $b2=$xml.CreateElement('BackedUp'); $b2.InnerText = if ($dataTime) { (Get-Date $dataTime).ToUniversalTime().ToString('o') } elseif ($dataBacked) {'true'} else {'false'}; $dd.AppendChild($b2)|Out-Null; $blEl.AppendChild($dd)|Out-Null
+  $os=$xml.CreateElement('Drive'); $a=$xml.CreateAttribute('type'); $a.Value='OperatingSystem'; $os.Attributes.Append($a)|Out-Null; $b=$xml.CreateElement('BackedUp'); $b.InnerText = if ($osTime) { (Get-Date $osTime).ToUniversalTime().ToString('o') } elseif ($osBacked) {'true'} else {'false'}; $os.AppendChild($b)|Out-Null; $e=$xml.CreateElement('Encrypted'); $e.InnerText = if ($osTime -or $osBacked) {'true'} else {'false'}; $os.AppendChild($e)|Out-Null; $blEl.AppendChild($os)|Out-Null
+  $dd=$xml.CreateElement('Drive'); $a2=$xml.CreateAttribute('type'); $a2.Value='Data'; $dd.Attributes.Append($a2)|Out-Null; $b2=$xml.CreateElement('BackedUp'); $b2.InnerText = if ($dataTime) { (Get-Date $dataTime).ToUniversalTime().ToString('o') } elseif ($dataBacked) {'true'} else {'false'}; $dd.AppendChild($b2)|Out-Null; $e2=$xml.CreateElement('Encrypted'); $e2.InnerText = if ($dataTime -or $dataBacked) {'true'} else {'false'}; $dd.AppendChild($e2)|Out-Null; $blEl.AppendChild($dd)|Out-Null
 
   $laps=$xml.CreateElement('LAPS'); $devEl.AppendChild($laps)|Out-Null
   Add-TextNode $xml $laps 'Available' ($(if ($lapsAvail) {'true'} else {'false'}))
   Add-TextNode $xml $laps 'Retrieved' 'false'
 
   $summary += [pscustomobject]@{
-    Name=$d.DisplayName; DeviceID=$d.Id; Enabled=$d.AccountEnabled; UserPrincipalName=$md.UserPrincipalName; MDM=$(if($md){'Microsoft Intune'}); Activity=$activity; LastCheckIn=$last; BitLockerOSBackedUp=$osBacked; BitLockerDataBackedUp=$dataBacked; LAPSAvailable=$lapsAvail
+    Name=$d.DisplayName; DeviceID=$d.Id; Enabled=$d.AccountEnabled; UserPrincipalName=$md.UserPrincipalName; MDM=$(if($md){'Microsoft Intune'}); Activity=$activity; LastCheckIn=$last; BitLockerOSBackedUp=$osBacked; BitLockerDataBackedUp=$dataBacked; BitLockerOSEncrypted=($osTime -or $osBacked); BitLockerDataEncrypted=($dataTime -or $dataBacked); LAPSAvailable=$lapsAvail
   }
   $deviceName = if ($d.DisplayName) { $d.DisplayName } else { $d.Id }
   Write-Host ("{0} exported" -f $deviceName)

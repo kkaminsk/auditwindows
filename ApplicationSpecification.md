@@ -14,7 +14,7 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 
 ### **Execution Flow**
 
-1. **Connect to Microsoft Graph** using either interactive delegated authentication (`Connect-MgGraph`) or app-only certificate authentication (service principal). When app-only is selected and the app doesn’t exist, the script can provision it (admin consent required).
+1. **Connect to Microsoft Graph** using either interactive delegated authentication (`Connect-MgGraph`) or app-only certificate authentication (service principal). When app-only is selected and the app doesn’t exist, the script can provision it (admin consent required). If Microsoft.Graph cmdlets are not available, REST calls via `Invoke-MgGraphRequest` are used as a fallback.
 2. **Query Entra ID devices** where `operatingSystem eq 'Windows'`.
 3. **Collect key attributes** for each device:
    - Device Name
@@ -25,8 +25,8 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
    - Activity status
    - Last Check-In time (from Intune ManagedDevice)
 4. **Retrieve security attributes:**
-   - BitLocker key backup status
-   - LAPS password availability
+   - BitLocker recovery keys by Azure AD `deviceId`; classify per-volume (OperatingSystem/Data), capture backup timestamp when available, and emit a per-drive `Encrypted` boolean (true when a key is backed up).
+   - LAPS availability via GET-by-ID at `/directory/deviceLocalCredentials/{deviceId}` (existence only; no secrets).
 5. **Generate XML report** containing all collected data.
 6. **Log all actions and errors** to a timestamped log file.
 
@@ -79,6 +79,7 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
   <Device>
     <Name>PC-123</Name>
     <DeviceID>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</DeviceID>
+    <AzureAdDeviceId>yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</AzureAdDeviceId>
     <Enabled>true</Enabled>
     <UserPrincipalName>user@domain.com</UserPrincipalName>
     <MDM>Microsoft Intune</MDM>
@@ -87,9 +88,11 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
     <BitLocker>
       <Drive type="OperatingSystem">
         <BackedUp>2025-10-07T13:15:00Z</BackedUp>
+        <Encrypted>true</Encrypted>
       </Drive>
       <Drive type="Data">
         <BackedUp>false</BackedUp>
+        <Encrypted>false</Encrypted>
       </Drive>
     </BitLocker>
     <LAPS>
@@ -118,6 +121,8 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 
 - XML saved alongside the log unless `-OutputPath` overrides it.
 
+- For BitLocker, `Encrypted` is `true` when a recovery key exists in Entra for that drive (i.e., a backup timestamp or presence is detected). It does not probe device-local encryption state.
+
 ------
 
 ## 6. Error Handling & Resilience
@@ -126,6 +131,8 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 - **Graceful skip** of devices missing required attributes.
 - **Continue on error** — no termination on transient failures.
 - **Error entries** logged with timestamp and exception detail.
+- **404 NotFound** for BitLocker or LAPS treated as non-fatal (interpreted as “no data”).
+- **REST fallback** is used when Microsoft.Graph cmdlets are unavailable to avoid module assembly conflicts.
 
 ------
 
@@ -143,12 +150,18 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 | `-AppName <name>`      | App registration display name (default: WindowsAuditApp). |
 | `-TenantId <guid>`     | Tenant to connect with app-only auth.                     |
 | `-CertSubject <dn>`    | Cert subject for self-signed cert (default: CN=<AppName>).|
+| `-SkipModuleImport`    | Skip importing Microsoft.Graph modules and use REST fallbacks. |
+| `-DeviceName <name>`   | Process only devices with matching `DisplayName`.         |
 
 Default output directory:
 
 ```
 %USERPROFILE%\Documents\
 ```
+
+### CSV columns
+
+- Includes `BitLockerOSEncrypted` and `BitLockerDataEncrypted` in addition to existing fields.
 
 ------
 

@@ -3,13 +3,13 @@ Windows Audit Application (PowerShell 7) to inventory Windows devices from Entra
 
 ## Overview
 
-`Get-EntraWindowsDevices.ps1` connects to Microsoft Graph using either delegated (interactive) or app-only (certificate) auth to enumerate Entra ID devices with operatingSystem = "Windows", enriches with Intune ManagedDevice info (last check-in), evaluates BitLocker key backup presence, checks LAPS credential availability, and writes results to an XML report with optional CSV summary. All actions are logged to a timestamped log.
+`Get-EntraWindowsDevices.ps1` connects to Microsoft Graph using either delegated (interactive) or app-only (certificate) auth to enumerate Entra ID devices with operatingSystem = "Windows", enriches with Intune ManagedDevice info (last check-in), evaluates BitLocker key backup presence (and emits a per-drive `Encrypted` flag), checks LAPS credential availability, and writes results to an XML report with optional CSV summary. The script can also fall back to direct REST calls via `Invoke-MgGraphRequest` when Graph cmdlets are unavailable. All actions are logged to a timestamped log.
 
 ## Prerequisites
 
 - PowerShell 7+ (pwsh)
 - Internet access to Microsoft Graph
-- Microsoft Graph PowerShell SDK. The script auto-installs required Microsoft.Graph submodules (Authentication, Applications, ServicePrincipals, Identity.DirectoryManagement, DeviceManagement, InformationProtection) for reliability and falls back to import-by-path if needed.
+- Microsoft Graph PowerShell SDK. The script auto-installs targeted Microsoft.Graph submodules (Authentication, Identity.DirectoryManagement, DeviceManagement, InformationProtection) and can skip imports with `-SkipModuleImport` to rely on REST fallback (`Invoke-MgGraphRequest`) and avoid assembly-load conflicts. App provisioning modules (Applications, ServicePrincipals) are only imported when `-UseAppAuth`/`-CreateAppIfMissing` are used.
 
 ## Permissions and Roles
 
@@ -62,6 +62,13 @@ pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -CreateAppIfMiss
 # Subsequent app-only runs (no provisioning)
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth `
   -TenantId '<YOUR_TENANT_GUID>' -AppName 'WindowsAuditApp' -CertSubject 'CN=WindowsAuditApp' -ExportCSV -Verbose
+
+# Use existing connected session and skip module import (avoid assembly conflicts)
+Connect-MgGraph -UseDeviceCode -Scopes 'Device.Read.All','Directory.Read.All','BitLockerKey.Read.All','DeviceLocalCredential.Read.All','DeviceManagementManagedDevices.Read.All'
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -SkipModuleImport -ExportCSV -Verbose
+
+# Target a single device by name (quick validation)
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -SkipModuleImport -DeviceName 'DESKTOP-KIJL01G' -Verbose
 ```
 
 Outputs (default directory is `%USERPROFILE%\Documents`):
@@ -72,10 +79,16 @@ Outputs (default directory is `%USERPROFILE%\Documents`):
 
 ## What’s collected
 
-- Device: Name, DeviceID, Enabled, UserPrincipalName (from Intune), MDM (Intune when present)
+- Device: Name, DeviceID (directory objectId), AzureAdDeviceId (used for BitLocker/LAPS), Enabled, UserPrincipalName (from Intune), MDM (Intune when present)
 - Activity and LastCheckIn (from Intune ManagedDevice)
-- BitLocker backup presence per drive type (OperatingSystem/Data)
+- BitLocker per drive type (OperatingSystem/Data):
+  - BackedUp: ISO 8601 timestamp or boolean true/false (presence)
+  - Encrypted: boolean true/false (true when a recovery key is backed up in Entra)
 - LAPS availability (existence-only, no secrets retrieved)
+
+Lookup details:
+- BitLocker keys are queried by Azure AD `deviceId` using Graph (`/informationProtection/bitlocker/recoveryKeys?$filter=deviceId eq '{deviceId}'`).
+- LAPS availability is queried with GET-by-ID (`/directory/deviceLocalCredentials/{deviceId}`).
 
 ## Logging
 
@@ -93,7 +106,7 @@ Console shows high-level progress (module loads, connection success, query count
 
 ## XML schema
 
-Consolidated report root: `<WindowsAudit>` with one `<Device>` per Windows device, including `<BitLocker>` and `<LAPS>` sections. Timestamps are UTC ISO 8601 when available; otherwise boolean `true/false` indicates presence.
+Consolidated report root: `<WindowsAudit>` with one `<Device>` per Windows device, including `<BitLocker>` and `<LAPS>` sections. Timestamps are UTC ISO 8601 when available; otherwise boolean `true/false` indicates presence. The `<Device>` node includes `<AzureAdDeviceId>`. Each `<BitLocker>/<Drive>` node includes both `<BackedUp>` and `<Encrypted>`.
 
 Validate the XML using `Demo.xsd`:
 
@@ -122,7 +135,15 @@ $reader.Dispose()
 - 403/insufficient privileges: request the missing Graph permissions or use an appropriate Azure role.
 - 429/throttling: the script backs off and retries automatically; re-run later if limits persist.
 - No Intune data: if a device isn’t Intune-managed or the scope isn’t granted, `LastCheckIn`/`Activity` will be empty.
-- Module import hangs: the script imports Graph submodules and logs their versions/paths; if hangs persist, open a fresh pwsh session, remove old `Microsoft.Graph*` modules, and reinstall the latest.
+- Module import hangs: run with `-SkipModuleImport` to rely on REST fallback, or open a fresh pwsh session, remove old `Microsoft.Graph*` modules, and reinstall the latest.
+- BitLocker/LAPS not found: 404 (NotFound) responses are treated as non-fatal and reported as missing (false). If keys exist but volume classification is ambiguous, the OS drive is marked as backed up to avoid false negatives.
+
+## CSV columns
+
+When `-ExportCSV` is used, the CSV also includes:
+
+- `BitLockerOSEncrypted`
+- `BitLockerDataEncrypted`
 
 ## Roadmap
 
