@@ -85,6 +85,9 @@ Outputs (default directory is `%USERPROFILE%\Documents`):
   - BackedUp: ISO 8601 timestamp or boolean true/false (presence)
   - Encrypted: boolean true/false (true when a recovery key is backed up in Entra)
 - LAPS availability (existence-only, no secrets retrieved)
+  - Available: boolean true/false if the password exists in Entra
+  - Retrieved: boolean true/false if the password has been exposed for use 
+
 
 Lookup details:
 - BitLocker keys are queried by Azure AD `deviceId` using Graph (`/informationProtection/bitlocker/recoveryKeys?$filter=deviceId eq '{deviceId}'`).
