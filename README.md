@@ -104,6 +104,7 @@ Outputs (default directory is `%USERPROFILE%\Documents`):
 - BitLocker per drive type (OperatingSystem/Data):
   - BackedUp: ISO 8601 timestamp or boolean true/false (presence)
   - Encrypted: boolean true/false (true when a recovery key is backed up in Entra)
+  - Data drive key detection in place but no check for fixed drive
 - LAPS availability (existence-only, no secrets retrieved)
   - Available: boolean true/false if the password exists in Entra
   - Retrieved: boolean true/false if the password has been exposed for use 
