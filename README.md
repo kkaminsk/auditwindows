@@ -112,7 +112,7 @@ Outputs (default directory is `%USERPROFILE%\Documents`):
 
 Lookup details:
 - BitLocker keys are queried by Azure AD `deviceId` using Graph (`/informationProtection/bitlocker/recoveryKeys?$filter=deviceId eq '{deviceId}'`).
-- LAPS availability is queried with GET-by-ID (`/directory/deviceLocalCredentials/{deviceId}`).
+- LAPS availability is queried with GET-by-ID (`/devices/{id}/localCredentials`).
 
 ## Logging
 
@@ -176,4 +176,5 @@ When `-ExportCSV` is used, the CSV also includes:
 - Richer ManagedDevice fields
 - Optional HTML report
 - Package as a PowerShell module; optional Key Vault storage for certificate/private key; support managed identity where feasible
+
 
