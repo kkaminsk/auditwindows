@@ -57,28 +57,40 @@ Write-Log "Script start. OutputPath=$docs"
 
 function Import-GraphModuleIfNeeded {
   # Prefer targeted submodules to avoid meta-module assembly conflicts
+  # Note: InformationProtection module may not exist in all SDK versions; REST fallback handles this
   $neededModules = @(
     'Microsoft.Graph.Authentication',
     'Microsoft.Graph.Identity.DirectoryManagement',
-    'Microsoft.Graph.DeviceManagement',
-    'Microsoft.Graph.InformationProtection'
+    'Microsoft.Graph.DeviceManagement'
   )
   # Only load app management modules when app-only auth/provisioning is requested
   if ($UseAppAuth -or $CreateAppIfMissing) {
     $neededModules += @('Microsoft.Graph.Applications','Microsoft.Graph.ServicePrincipals')
   }
-  # If keys exist but none classified, assume OS backed up to avoid false negatives
-  if (($keys -and $keys.Count -gt 0) -and (-not $osBacked -and -not $dataBacked)) {
-    $osBacked = $true
-    Write-Log ("BitLocker keys exist but volumeType was ambiguous; marking OS as backed up for device {0}" -f $d.Id) 'WARN'
-  }
   $cmdChecks = @{
-    'Microsoft.Graph.Authentication'               = @('Connect-MgGraph','Get-MgContext')
+    'Microsoft.Graph.Authentication'               = @('Connect-MgGraph','Get-MgContext','Invoke-MgGraphRequest')
     'Microsoft.Graph.Applications'                 = @('New-MgApplication','Update-MgApplication','Get-MgApplication')
     'Microsoft.Graph.ServicePrincipals'            = @('New-MgServicePrincipal','Get-MgServicePrincipal','New-MgServicePrincipalAppRoleAssignment','Get-MgServicePrincipalAppRoleAssignment')
     'Microsoft.Graph.Identity.DirectoryManagement' = @('Get-MgDevice','Get-MgDirectoryDeviceLocalCredential')
     'Microsoft.Graph.DeviceManagement'             = @('Get-MgDeviceManagementManagedDevice')
     'Microsoft.Graph.InformationProtection'        = @('Get-MgInformationProtectionBitlockerRecoveryKey')
+  }
+  # First, check if all required commands are already available
+  $allCmdsPresent = $true
+  foreach ($m in $neededModules) {
+    $checks = $cmdChecks[$m]
+    if ($checks) {
+      $missing = @($checks | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) })
+      if ($missing.Count -gt 0) {
+        $allCmdsPresent = $false
+        break
+      }
+    }
+  }
+  if ($allCmdsPresent) {
+    Write-Log "All required Graph commands already available; skipping module imports." 'INFO'
+    Write-Host "All required Graph commands already available; skipping module imports."
+    return
   }
   foreach ($m in $neededModules) {
     $checks = $cmdChecks[$m]
@@ -92,7 +104,13 @@ function Import-GraphModuleIfNeeded {
     }
     if (-not (Get-Module -ListAvailable -Name $m)) {
       Write-Log ("Installing {0} to CurrentUser..." -f $m) 'WARN'
-      try { Install-Module $m -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop } catch { Write-Log ("Install failed for {0}: {1}" -f $m, $_) 'ERROR'; throw }
+      try {
+        Install-Module $m -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+      } catch {
+        Write-Log ("Install failed for {0}: {1}. REST fallback will be used." -f $m, $_) 'WARN'
+        Write-Host ("Could not install {0}; will use REST fallback." -f $m) -ForegroundColor Yellow
+        continue
+      }
     }
     Write-Host ("Loading module: {0}" -f $m)
     try {
@@ -101,7 +119,7 @@ function Import-GraphModuleIfNeeded {
       if ($loaded) { Write-Log ("Loaded {0} v{1} from {2}" -f $loaded.Name, $loaded.Version, $loaded.Path) 'INFO' }
     } catch {
       $errText = $_.ToString()
-      Write-Log ("Failed to import {0}: {1}" -f $m, $errText) 'ERROR'
+      Write-Log ("Failed to import {0}: {1}" -f $m, $errText) 'WARN'
       # If assemblies are already loaded but commands are present, proceed
       if ($errText -match 'Assembly with same name is already loaded') {
         $missing = @($checks | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) })
@@ -111,7 +129,7 @@ function Import-GraphModuleIfNeeded {
           continue
         }
       }
-      Write-Host ("ERROR importing {0}. Attempting import by explicit path..." -f $m) -ForegroundColor Red
+      Write-Host ("Import issue for {0}. Attempting import by explicit path..." -f $m) -ForegroundColor Yellow
       $latest = Get-Module -ListAvailable -Name $m | Sort-Object Version -Descending | Select-Object -First 1
       if ($latest) {
         try {
@@ -119,14 +137,15 @@ function Import-GraphModuleIfNeeded {
           Write-Log ("Imported {0} by path: {1}" -f $m, $latest.Path) 'INFO'
         } catch {
           $errText2 = $_.ToString()
-          Write-Log ("Import by path failed for {0}: {1}" -f $m, $errText2) 'ERROR'
-          # Final fallback: if commands exist anyway, proceed; else throw
+          Write-Log ("Import by path failed for {0}: {1}" -f $m, $errText2) 'WARN'
+          # Final fallback: if commands exist anyway, proceed; else warn and continue (REST fallback will handle it)
           $missing = @($checks | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) })
           if ($missing.Count -eq 0) {
             Write-Log ("Commands detected despite import error for {0}. Proceeding." -f $m) 'WARN'
             Write-Host ("Commands detected despite import error for {0}. Proceeding." -f $m)
           } else {
-            throw
+            Write-Log ("Import failed for {0} but REST fallback available. Proceeding." -f $m) 'WARN'
+            Write-Host ("Import failed for {0}; will use REST fallback." -f $m) -ForegroundColor Yellow
           }
         }
       } else {
@@ -136,7 +155,8 @@ function Import-GraphModuleIfNeeded {
           Write-Log ("No installable module found for {0}, but commands are present. Proceeding." -f $m) 'WARN'
           Write-Host ("No installable module found for {0}, but commands are present. Proceeding." -f $m)
         } else {
-          throw
+          Write-Log ("No module found for {0} but REST fallback available. Proceeding." -f $m) 'WARN'
+          Write-Host ("No module found for {0}; will use REST fallback." -f $m) -ForegroundColor Yellow
         }
       }
     }
@@ -213,7 +233,7 @@ function Connect-GraphInteractive {
   }
 }
 
-function Ensure-AppRegistrationAndConnect {
+function Initialize-AppRegistrationAndConnect {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory=$true)][string]$Tenant,
@@ -338,7 +358,7 @@ if (-not $SkipModuleImport) {
 }
 if ($UseAppAuth) {
   if (-not $TenantId -or $TenantId.Trim() -eq '') { throw "-TenantId is required when using -UseAppAuth." }
-  Ensure-AppRegistrationAndConnect -Tenant $TenantId -Name $AppName -Create:$CreateAppIfMissing -Subject $CertSubject
+  Initialize-AppRegistrationAndConnect -Tenant $TenantId -Name $AppName -Create:$CreateAppIfMissing -Subject $CertSubject
 } else {
   Connect-GraphInteractive
 }
