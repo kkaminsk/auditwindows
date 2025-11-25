@@ -37,14 +37,12 @@ Delegated Microsoft Graph scopes requested interactively:
 
 - Device.Read.All
 - BitLockerKey.ReadBasic.All
-- Directory.Read.All
 - DeviceLocalCredential.ReadBasic.All
 - DeviceManagementManagedDevices.Read.All (required to populate LastCheckIn/Activity via Intune)
 
 Application (app-only) permissions required when using `-UseAppAuth`:
 
 - Device.Read.All
-- Directory.Read.All
 - BitLockerKey.ReadBasic.All
 - DeviceLocalCredential.ReadBasic.All
 - DeviceManagementManagedDevices.Read.All
@@ -53,7 +51,6 @@ Provisioning (admin-consent) scopes used when `-CreateAppIfMissing` is specified
 
 - Application.ReadWrite.All
 - AppRoleAssignment.ReadWrite.All
-- Directory.ReadWrite.All
 
 Recommended Azure roles (any one that covers the above):
 
@@ -84,7 +81,7 @@ pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth `
   -TenantId '<YOUR_TENANT_GUID>' -AppName 'WindowsAuditApp' -CertSubject 'CN=WindowsAuditApp' -ExportCSV -Verbose
 
 # Use existing connected session and skip module import (avoid assembly conflicts)
-Connect-MgGraph -UseDeviceCode -Scopes 'Device.Read.All','Directory.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All'
+Connect-MgGraph -UseDeviceCode -Scopes 'Device.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All'
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -SkipModuleImport -ExportCSV -Verbose
 
 # Target a single device by name (quick validation)

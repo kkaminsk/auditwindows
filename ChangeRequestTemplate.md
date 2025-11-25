@@ -58,7 +58,6 @@ The administrator running the provisioning script (`-CreateAppIfMissing`) requir
 |------------|------|---------|
 | `Application.ReadWrite.All` | Delegated | Create and update the application registration |
 | `AppRoleAssignment.ReadWrite.All` | Delegated | Grant application permissions (app roles) to the service principal |
-| `Directory.ReadWrite.All` | Delegated | Read directory objects and assign permissions |
 
 **Recommended Azure AD Roles** (any one of):
 
@@ -77,7 +76,6 @@ Once provisioned, the application registration (`WindowsAuditApp`) requires the 
 | Permission | Type | Purpose | Risk Level |
 |------------|------|---------|------------|
 | `Device.Read.All` | Application | Read all device properties from Entra ID | Medium |
-| `Directory.Read.All` | Application | Read directory data (device metadata) | Medium |
 | `BitLockerKey.ReadBasic.All` | Application | Read BitLocker recovery key metadata (existence/backup status only; keys are not retrieved) | Medium |
 | `DeviceLocalCredential.ReadBasic.All` | Application | Read LAPS password metadata (existence only; passwords are not retrieved) | Medium |
 | `DeviceManagementManagedDevices.Read.All` | Application | Read Intune managed device data (last check-in, activity) | Medium |
@@ -214,7 +212,7 @@ Permissions are automatically revoked when the application registration or servi
 - [ ] Application registration created in Entra ID
 - [ ] Service principal exists and is enabled
 - [ ] Certificate added to application `keyCredentials`
-- [ ] All 5 application permissions granted with admin consent
+- [ ] All 4 application permissions granted with admin consent
 - [ ] Test query returns expected device data
 
 ### 8.2 Runtime Validation

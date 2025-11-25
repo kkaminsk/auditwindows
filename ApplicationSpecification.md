@@ -48,7 +48,6 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 
 - `Device.Read.All`
 - `BitLockerKey.ReadBasic.All`
-- `Directory.Read.All`
 - `DeviceLocalCredential.ReadBasic.All`
 - `DeviceManagementManagedDevices.Read.All`
 

@@ -213,7 +213,7 @@ function Invoke-GraphWithRetry {
 }
 
 function Connect-GraphInteractive {
-  $scopes = 'Device.Read.All','BitLockerKey.ReadBasic.All','Directory.Read.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All'
+  $scopes = 'Device.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All'
   Write-Log "Connecting to Graph with scopes: $($scopes -join ', ')"
   Write-Host "Connecting to Microsoft Graph..."
   try {
@@ -224,8 +224,15 @@ function Connect-GraphInteractive {
       Connect-MgGraph -Scopes $scopes -NoWelcome -ErrorAction Stop | Out-Null
     }
     $ctx = Get-MgContext
-    Write-Log "Connected. Tenant=$($ctx.TenantId) Account=$($ctx.Account)" 'INFO'
-    Write-Host ("Connected to Graph. Tenant={0} Account={1}" -f $ctx.TenantId, $ctx.Account)
+    Write-Log "Connected. Tenant=$($ctx.TenantId) Account=$($ctx.Account) ClientId=$($ctx.ClientId)" 'INFO'
+    Write-Host ("Connected to Graph. Tenant={0} Account={1} ClientId={2}" -f $ctx.TenantId, $ctx.Account, $ctx.ClientId)
+    Write-Log "Permissions: Mode=Delegated Scopes:" 'INFO'
+    Write-Host "Using delegated Graph scopes:" 
+    foreach ($s in $scopes) {
+      Write-Log (" - {0}" -f $s) 'INFO'
+      Write-Host (" - {0}" -f $s)
+    }
+    Write-Log ("Auth summary: Mode=Delegated Tenant={0} ClientId={1} Account={2}" -f $ctx.TenantId, $ctx.ClientId, $ctx.Account) 'INFO'
   } catch {
     Write-Log "Failed to connect to Microsoft Graph. $_" 'ERROR'
     Write-Host "ERROR: Failed to connect to Microsoft Graph. See log for details." -ForegroundColor Red
@@ -249,7 +256,7 @@ function Initialize-AppRegistrationAndConnect {
   $cert = $null
   if ($Create) {
     Write-Host "Connecting (admin) to provision/ensure application (device code)..."
-    $adminScopes = 'Application.ReadWrite.All','AppRoleAssignment.ReadWrite.All','Directory.ReadWrite.All'
+    $adminScopes = 'Application.ReadWrite.All','AppRoleAssignment.ReadWrite.All'
     Connect-MgGraph -UseDeviceCode -Scopes $adminScopes -NoWelcome -ErrorAction Stop | Out-Null
     $ctx = Get-MgContext
     Write-Log ("Admin connected for provisioning. Tenant={0}" -f $ctx.TenantId) 'INFO'
@@ -307,7 +314,7 @@ function Initialize-AppRegistrationAndConnect {
 
     # Grant app roles on Microsoft Graph
     $graphSp = Invoke-GraphWithRetry -OperationName 'Get-MgServicePrincipal' -Resource "GET /servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'" -Script { Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'" -All } | Select-Object -First 1
-    $needed = @('Device.Read.All','Directory.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All')
+    $needed = @('Device.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All')
     $assignments = Invoke-GraphWithRetry -OperationName 'Get-MgServicePrincipalAppRoleAssignment' -Resource 'GET /servicePrincipals/{id}/appRoleAssignments' -Script { Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -All }
     foreach ($perm in $needed) {
       $role = $graphSp.AppRoles | Where-Object { $_.Value -eq $perm -and $_.AllowedMemberTypes -contains 'Application' } | Select-Object -First 1
@@ -337,8 +344,15 @@ function Initialize-AppRegistrationAndConnect {
   Write-Host "Connecting to Graph with application (certificate)..."
   Connect-MgGraph -TenantId $Tenant -ClientId $app.AppId -CertificateThumbprint $cert.Thumbprint -NoWelcome -ErrorAction Stop | Out-Null
   $ctx2 = Get-MgContext
-  Write-Log ("Connected (app-only). Tenant={0} AppId={1}" -f $ctx2.TenantId, $app.AppId) 'INFO'
-  Write-Host ("Connected (app-only). Tenant={0} AppId={1}" -f $ctx2.TenantId, $app.AppId)
+  Write-Log ("Connected (app-only). Tenant={0} AppId={1} ClientId={2}" -f $ctx2.TenantId, $app.AppId, $ctx2.ClientId) 'INFO'
+  Write-Host ("Connected (app-only). Tenant={0} AppId={1} ClientId={2}" -f $ctx2.TenantId, $app.AppId, $ctx2.ClientId)
+  Write-Log "Permissions: Mode=AppOnly AppRoles:" 'INFO'
+  Write-Host "Using app-only Graph application permissions:" 
+  foreach ($p in $needed) {
+    Write-Log (" - {0}" -f $p) 'INFO'
+    Write-Host (" - {0}" -f $p)
+  }
+  Write-Log ("Auth summary: Mode=AppOnly Tenant={0} AppId={1} ClientId={2} AppName={3}" -f $ctx2.TenantId, $app.AppId, $ctx2.ClientId, $Name) 'INFO'
 }
 
 function Get-WindowsDirectoryDevices { Invoke-GraphWithRetry -OperationName 'Get-MgDevice' -Resource "GET /devices?`$select=id,displayName,deviceId,accountEnabled,operatingSystem&`$filter=operatingSystem eq 'Windows'" -Script { if (Get-Command Get-MgDevice -ErrorAction SilentlyContinue) { Get-MgDevice -Filter "operatingSystem eq 'Windows'" -All -ErrorAction Stop } else { Invoke-GraphGetAll "/devices?`$select=id,displayName,deviceId,accountEnabled,operatingSystem&`$filter=operatingSystem eq 'Windows'" } } }
