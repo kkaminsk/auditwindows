@@ -78,8 +78,8 @@ Once provisioned, the application registration (`WindowsAuditApp`) requires the 
 |------------|------|---------|------------|
 | `Device.Read.All` | Application | Read all device properties from Entra ID | Medium |
 | `Directory.Read.All` | Application | Read directory data (device metadata) | Medium |
-| `BitLockerKey.Read.All` | Application | Read BitLocker recovery key metadata (existence/backup status only; keys are not retrieved) | **High** |
-| `DeviceLocalCredential.Read.All` | Application | Read LAPS password metadata (existence only; passwords are not retrieved) | **High** |
+| `BitLockerKey.ReadBasic.All` | Application | Read BitLocker recovery key metadata (existence/backup status only; keys are not retrieved) | Medium |
+| `DeviceLocalCredential.ReadBasic.All` | Application | Read LAPS password metadata (existence only; passwords are not retrieved) | Medium |
 | `DeviceManagementManagedDevices.Read.All` | Application | Read Intune managed device data (last check-in, activity) | Medium |
 
 **Admin Consent Required**: Yes. All application permissions require tenant administrator consent.
