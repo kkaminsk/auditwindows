@@ -1,6 +1,6 @@
 $deviceName = Read-Host "Enter the device name you want to check"
 Write-Host "`nConnecting to Microsoft Graph..." -ForegroundColor Cyan
-Connect-MgGraph -Scopes 'Device.Read.All','DeviceLocalCredential.Read.All' -NoWelcome
+Connect-MgGraph -Scopes 'Device.Read.All','DeviceLocalCredential.ReadBasic.All' -NoWelcome
 
 Write-Host "`nQuerying device: $deviceName" -ForegroundColor Cyan
 # Use REST to avoid module import issues

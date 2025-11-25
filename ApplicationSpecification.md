@@ -47,9 +47,9 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 ### **Required Graph API Scopes**
 
 - `Device.Read.All`
-- `BitLockerKey.Read.All`
+- `BitLockerKey.ReadBasic.All`
 - `Directory.Read.All`
-- `DeviceLocalCredential.Read.All`
+- `DeviceLocalCredential.ReadBasic.All`
 - `DeviceManagementManagedDevices.Read.All`
 
 ### **Recommended Azure Roles**

@@ -36,17 +36,17 @@ https://chatgpt.com/g/g-68e6e364e48c8191993f38b9a190af02
 Delegated Microsoft Graph scopes requested interactively:
 
 - Device.Read.All
-- BitLockerKey.Read.All
+- BitLockerKey.ReadBasic.All
 - Directory.Read.All
-- DeviceLocalCredential.Read.All
+- DeviceLocalCredential.ReadBasic.All
 - DeviceManagementManagedDevices.Read.All (required to populate LastCheckIn/Activity via Intune)
 
 Application (app-only) permissions required when using `-UseAppAuth`:
 
 - Device.Read.All
 - Directory.Read.All
-- BitLockerKey.Read.All
-- DeviceLocalCredential.Read.All
+- BitLockerKey.ReadBasic.All
+- DeviceLocalCredential.ReadBasic.All
 - DeviceManagementManagedDevices.Read.All
 
 Provisioning (admin-consent) scopes used when `-CreateAppIfMissing` is specified:
@@ -84,7 +84,7 @@ pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth `
   -TenantId '<YOUR_TENANT_GUID>' -AppName 'WindowsAuditApp' -CertSubject 'CN=WindowsAuditApp' -ExportCSV -Verbose
 
 # Use existing connected session and skip module import (avoid assembly conflicts)
-Connect-MgGraph -UseDeviceCode -Scopes 'Device.Read.All','Directory.Read.All','BitLockerKey.Read.All','DeviceLocalCredential.Read.All','DeviceManagementManagedDevices.Read.All'
+Connect-MgGraph -UseDeviceCode -Scopes 'Device.Read.All','Directory.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All'
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -SkipModuleImport -ExportCSV -Verbose
 
 # Target a single device by name (quick validation)

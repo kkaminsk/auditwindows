@@ -213,7 +213,7 @@ function Invoke-GraphWithRetry {
 }
 
 function Connect-GraphInteractive {
-  $scopes = 'Device.Read.All','BitLockerKey.Read.All','Directory.Read.All','DeviceLocalCredential.Read.All','DeviceManagementManagedDevices.Read.All'
+  $scopes = 'Device.Read.All','BitLockerKey.ReadBasic.All','Directory.Read.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All'
   Write-Log "Connecting to Graph with scopes: $($scopes -join ', ')"
   Write-Host "Connecting to Microsoft Graph..."
   try {
@@ -307,7 +307,7 @@ function Initialize-AppRegistrationAndConnect {
 
     # Grant app roles on Microsoft Graph
     $graphSp = Invoke-GraphWithRetry -OperationName 'Get-MgServicePrincipal' -Resource "GET /servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'" -Script { Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'" -All } | Select-Object -First 1
-    $needed = @('Device.Read.All','Directory.Read.All','BitLockerKey.Read.All','DeviceLocalCredential.Read.All','DeviceManagementManagedDevices.Read.All')
+    $needed = @('Device.Read.All','Directory.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All')
     $assignments = Invoke-GraphWithRetry -OperationName 'Get-MgServicePrincipalAppRoleAssignment' -Resource 'GET /servicePrincipals/{id}/appRoleAssignments' -Script { Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -All }
     foreach ($perm in $needed) {
       $role = $graphSp.AppRoles | Where-Object { $_.Value -eq $perm -and $_.AllowedMemberTypes -contains 'Application' } | Select-Object -First 1

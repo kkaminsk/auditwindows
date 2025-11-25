@@ -9,11 +9,11 @@ try {
     $ctx = Get-MgContext
     if (-not $ctx) {
         Write-Host "Connecting to Graph..." -ForegroundColor Yellow
-        Connect-MgGraph -Scopes 'Device.Read.All','DeviceLocalCredential.Read.All' -NoWelcome
+        Connect-MgGraph -Scopes 'Device.Read.All','DeviceLocalCredential.ReadBasic.All' -NoWelcome
     }
 } catch {
     Write-Host "Connecting to Graph..." -ForegroundColor Yellow
-    Connect-MgGraph -Scopes 'Device.Read.All','DeviceLocalCredential.Read.All' -NoWelcome
+    Connect-MgGraph -Scopes 'Device.Read.All','DeviceLocalCredential.ReadBasic.All' -NoWelcome
 }
 
 Write-Host "`n1. Testing Get-LapsAADPassword (known working):" -ForegroundColor Green
