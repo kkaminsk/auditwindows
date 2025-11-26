@@ -60,13 +60,41 @@ Recommended Azure roles (any one that covers the above):
 
 Note: If `DeviceManagementManagedDevices.Read.All` isn’t granted, Intune enrichment is skipped and `LastCheckIn`/`Activity` may be null.
 
+## Setup: Dedicated App Registration (Recommended)
+
+For production use, create a dedicated "Audit Windows" app registration instead of using the shared Microsoft Graph PowerShell app. This provides:
+
+- **Clear audit trail** — Sign-ins logged under "Audit Windows" in Entra
+- **Conditional Access** — Target policies specifically to this tool
+- **Pre-consented permissions** — No user self-consent required
+- **Independent lifecycle** — Revoke without affecting other Graph PowerShell usage
+
+### One-time setup (run as Global Admin or Application Admin)
+
+```powershell
+# Optionally place logo.jpg in the script directory for app branding
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1
+
+# Or specify a tenant and skip prompts
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId 'contoso.onmicrosoft.com' -Force
+```
+
+This creates:
+- An "Audit Windows" app registration with the 4 required permissions
+- Admin consent for all permissions
+- A certificate credential (stored in `Cert:\CurrentUser\My`)
+- A JSON summary file (`AuditWindowsAppSummary.json`)
+
 ## Usage
 
 From the repository root `auditwindows/`:
 
 ```powershell
-# Delegated (user) auth — default
+# Delegated (user) auth — default (uses shared Microsoft Graph PowerShell app)
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
+
+# Delegated auth using the dedicated "Audit Windows" app (recommended)
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppRegistration
 
 # Delegated with device code, custom output, CSV, verbose
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -OutputPath C:\Reports\WindowsAudit -ExportCSV -Verbose

@@ -118,7 +118,44 @@ Once provisioned, the application registration (`WindowsAuditApp`) requires the 
 
 ## 6. Implementation Steps
 
-### 6.1 Provisioning (One-Time)
+### 6.1 Provisioning Option A: Dedicated App Registration (Recommended)
+
+Use `Setup-AuditWindowsApp.ps1` to create a dedicated "Audit Windows" app registration with pre-consented permissions. This is the recommended approach for production use.
+
+**Prerequisites:**
+- PowerShell 7+
+- Microsoft Graph PowerShell SDK installed (or auto-install enabled)
+- Administrator account with Application Administrator or Global Administrator role
+- Optional: `logo.jpg` in the script directory for app branding
+
+**Command:**
+```powershell
+# Place logo.jpg in the script directory (optional)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>' -Force
+```
+
+**Actions Performed:**
+1. Connect to Microsoft Graph with admin delegated auth
+2. Create application registration "Audit Windows" if it doesn't exist
+3. Upload logo.jpg if present in script directory
+4. Configure the 4 required application permissions
+5. Create service principal for the application
+6. Grant admin consent for all permissions
+7. Create self-signed certificate in `Cert:\CurrentUser\My`
+8. Add certificate to application keyCredentials
+9. Output JSON summary to `AuditWindowsAppSummary.json`
+10. Open Entra Portal to the app's credentials blade
+
+**Usage after setup:**
+```powershell
+# Delegated auth using the dedicated app
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppRegistration
+
+# App-only auth using certificate
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>'
+```
+
+### 6.2 Provisioning Option B: Inline Provisioning (Legacy)
 
 **Prerequisites:**
 - PowerShell 7+

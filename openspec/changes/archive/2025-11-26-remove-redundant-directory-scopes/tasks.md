@@ -8,7 +8,7 @@
 - [x] 1.7 Update `ChangeRequestTemplate.md` to remove `Directory.Read.All` from runtime permissions table.
 
 ## 2. Validation
-- [ ] 2.1 Run script with delegated auth (`-MaxDevices 5`) and confirm devices, BitLocker, LAPS data retrieved.
-- [ ] 2.2 Run provisioning flow (`-UseAppAuth -CreateAppIfMissing`) in a test tenant and confirm app/SP/cert/roles created successfully.
-- [ ] 2.3 Verify XML output matches expected schema.
-- [ ] 2.4 Document any tenant-specific failures and rollback steps.
+- [x] 2.1 Run script with delegated auth (`-MaxDevices 5`) and confirm devices, BitLocker, LAPS data retrieved.
+- [x] 2.2 Run provisioning flow (`-UseAppAuth -CreateAppIfMissing`) in a test tenant and confirm app/SP/cert/roles created successfully.
+- [x] 2.3 Verify XML output matches expected schema.
+- [x] 2.4 Document any tenant-specific failures and rollback steps. (No failures observed. Rollback: re-add `Directory.Read.All` to scopes if specific tenant policies require it.)
