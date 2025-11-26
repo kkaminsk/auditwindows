@@ -33,6 +33,15 @@ https://chatgpt.com/g/g-68e6e364e48c8191993f38b9a190af02
 
 ## Permissions and Roles
 
+### Role Requirements by Script
+
+| Script | Required Azure AD Role |
+|--------|------------------------|
+| `Get-EntraWindowsDevices.ps1` | **Global Reader**, **Intune Administrator**, or **Security Reader** |
+| `Setup-AuditWindowsApp.ps1` | **Global Administrator** or **Application Administrator** |
+
+### Get-EntraWindowsDevices.ps1
+
 Delegated Microsoft Graph scopes requested interactively:
 
 - Device.Read.All
@@ -59,6 +68,20 @@ Recommended Azure roles (any one that covers the above):
 - Security Reader
 
 Note: If `DeviceManagementManagedDevices.Read.All` isn’t granted, Intune enrichment is skipped and `LastCheckIn`/`Activity` may be null.
+
+### Setup-AuditWindowsApp.ps1
+
+Delegated Microsoft Graph scopes required:
+
+- Application.ReadWrite.All (create/update app registrations)
+- AppRoleAssignment.ReadWrite.All (grant admin consent for app permissions)
+
+Required Azure AD roles (any one of the following):
+
+- **Global Administrator** — Full access to create apps and grant admin consent
+- **Application Administrator** — Can create app registrations and grant admin consent for non-privileged permissions
+
+Note: This script creates a dedicated app registration, uploads a certificate credential, and grants admin consent for the permissions required by `Get-EntraWindowsDevices.ps1`.
 
 ## Setup: Dedicated App Registration (Recommended)
 
@@ -93,8 +116,8 @@ From the repository root `auditwindows/`:
 # Delegated (user) auth — default (uses shared Microsoft Graph PowerShell app)
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
 
-# Delegated auth using the dedicated "Audit Windows" app (recommended)
-pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppRegistration
+# App-only auth using the dedicated "Audit Windows" app certificate (recommended for unattended)
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>' -AppName 'Audit Windows' -CertSubject 'CN=AuditWindowsCert'
 
 # Delegated with device code, custom output, CSV, verbose
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -OutputPath C:\Reports\WindowsAudit -ExportCSV -Verbose
