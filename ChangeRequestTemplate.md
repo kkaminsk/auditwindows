@@ -40,7 +40,7 @@ This change request seeks approval to create an Entra ID application registratio
 
 ### 3.2 Certificate Management
 
-- **Certificate Subject**: `CN=AuditWindowsCert` (configurable via `-CertificateSubject` in Setup-AuditWindowsApp.ps1 or `-CertSubject` in Get-EntraWindowsDevices.ps1)
+- **Certificate Subject**: `CN=WindowsAuditApp` (configurable via `-CertSubject`)
 - **Storage Location**: `Cert:\CurrentUser\My` (user certificate store)
 - **Validity Period**: 2 years from creation
 - **Key Length**: 2048-bit RSA
@@ -148,11 +148,11 @@ pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>'
 
 **Usage after setup:**
 ```powershell
-# Delegated (interactive) auth - default behavior
-pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
+# Delegated auth using the dedicated app
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppRegistration
 
-# App-only auth using certificate (unattended)
-pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>' -AppName 'Audit Windows' -CertSubject 'CN=AuditWindowsCert'
+# App-only auth using certificate
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>'
 ```
 
 ### 6.2 Provisioning Option B: Inline Provisioning (Legacy)
@@ -185,20 +185,19 @@ pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 `
 8. Connect with app-only auth using the certificate
 9. Run a test query (first 5 devices) to validate
 
-### 6.3 Subsequent Execution (Automated/Scheduled)
+### 6.2 Subsequent Execution (Automated/Scheduled)
 
 **Prerequisites:**
-- Certificate present in `Cert:\CurrentUser\My` with subject `CN=AuditWindowsCert`
+- Certificate present in `Cert:\CurrentUser\My` with subject `CN=WindowsAuditApp`
 - Application registration exists and has admin-consented permissions
 
 **Command:**
 ```powershell
-# App-only (certificate) auth for unattended execution
-pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>' -AppName 'Audit Windows' -CertSubject 'CN=AuditWindowsCert' -ExportCSV
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
 ```
 
 **Actions Performed:**
-1. Locate certificate in certificate store by subject
+1. Locate certificate in certificate store
 2. Connect to Microsoft Graph using app-only auth (certificate)
 3. Query all Windows devices from Entra ID
 4. Enrich with Intune, BitLocker, and LAPS data
@@ -229,12 +228,12 @@ Remove-MgApplication -ApplicationId $app.Id
 **Via Certificate Manager:**
 1. Open `certmgr.msc`
 2. Navigate to **Personal** > **Certificates**
-3. Locate certificate with subject `CN=AuditWindowsCert`
+3. Locate certificate with subject `CN=WindowsAuditApp`
 4. Right-click > **Delete**
 
 **Via PowerShell:**
 ```powershell
-Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=AuditWindowsCert' } | Remove-Item
+Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=WindowsAuditApp' } | Remove-Item
 ```
 
 ### 7.3 Revoke Permissions
