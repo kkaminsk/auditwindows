@@ -17,6 +17,10 @@
     Validity period for the generated certificate (1-60 months). Default: 24
 .PARAMETER ExistingCertificateThumbprint
     Thumbprint of an existing certificate in Cert:\CurrentUser\My to use instead of generating a new one.
+.PARAMETER SkipCertificate
+    Skip certificate registration entirely. Use this for interactive-only authentication.
+.PARAMETER SkipCertificateExport
+    Skip exporting the certificate to .cer and .pfx files. The certificate remains in Cert:\CurrentUser\My.
 .PARAMETER TenantId
     Target tenant ID. If not specified, uses the default tenant from the authenticated context.
 .PARAMETER Force
@@ -36,6 +40,9 @@
 .EXAMPLE
     .\Setup-AuditWindowsApp.ps1 -ExistingCertificateThumbprint 'ABC123...'
     Creates the app using an existing certificate from the local store.
+.EXAMPLE
+    .\Setup-AuditWindowsApp.ps1 -SkipCertificate
+    Creates the app for interactive authentication only (no certificate for app-only auth).
 .NOTES
     Requires Microsoft Graph PowerShell SDK with delegated permissions:
     Application.ReadWrite.All, AppRoleAssignment.ReadWrite.All.
@@ -48,6 +55,8 @@ param(
   [ValidateRange(1, 60)]
   [int]$CertificateValidityInMonths = 24,
   [string]$ExistingCertificateThumbprint,
+  [switch]$SkipCertificate,
+  [switch]$SkipCertificateExport,
   [string]$TenantId,
   [switch]$Force,
   [switch]$Reauth,
@@ -105,6 +114,18 @@ foreach ($perm in Get-AuditWindowsPermissionNames) {
   Write-Host " - $perm" -ForegroundColor Cyan
 }
 
+# Prompt for certificate skip if not already specified via parameter
+if (-not $SkipCertificate -and -not $Force) {
+  Write-Host ""
+  $skipCertResponse = Read-Host -Prompt "Skip certificate registration? (for interactive auth only) (Y/n)"
+  if ($skipCertResponse -match '^[Nn]') {
+    Write-Host "Certificate will be created for app-only authentication." -ForegroundColor Cyan
+  } else {
+    $SkipCertificate = $true
+    Write-Host "Certificate registration will be skipped." -ForegroundColor Yellow
+  }
+}
+
 Confirm-AuditWindowsAction -Message "`nProceed with creating/updating the Audit Windows application registration?" -Force:$Force
 
 # Create/update application
@@ -119,25 +140,46 @@ $sp = Get-AuditWindowsServicePrincipal -AppId $app.AppId
 # Configure permissions and grant consent
 Set-AuditWindowsPermissions -Application $app -ServicePrincipal $sp
 
-# Add certificate credential
-$certificate = Set-AuditWindowsKeyCredential `
-  -Application $app `
-  -CertificateSubject $CertificateSubject `
-  -CertificateValidityInMonths $CertificateValidityInMonths `
-  -ExistingCertificateThumbprint $ExistingCertificateThumbprint
+# Add certificate credential (optional - only needed for app-only auth)
+$certificate = $null
+if (-not $SkipCertificate) {
+  $certificate = Set-AuditWindowsKeyCredential `
+    -Application $app `
+    -CertificateSubject $CertificateSubject `
+    -CertificateValidityInMonths $CertificateValidityInMonths `
+    -ExistingCertificateThumbprint $ExistingCertificateThumbprint `
+    -SkipExport:$SkipCertificateExport
+} else {
+  Write-Host "`nSkipping certificate registration (interactive auth only)." -ForegroundColor Yellow
+}
 
 # Create summary
-$summary = New-AuditWindowsSummaryRecord `
-  -AppId $app.AppId `
-  -TenantId $tenantId `
-  -CertificateThumbprint $certificate.Thumbprint `
-  -CertificateExpiration $certificate.NotAfter `
-  -LogoUploaded $logoUploaded
+$summaryParams = @{
+  AppId       = $app.AppId
+  TenantId    = $tenantId
+  LogoUploaded = $logoUploaded
+}
+if ($certificate) {
+  $summaryParams['CertificateThumbprint'] = $certificate.Thumbprint
+  $summaryParams['CertificateExpiration'] = $certificate.NotAfter
+} else {
+  $summaryParams['CertificateThumbprint'] = 'N/A (interactive only)'
+  $summaryParams['CertificateExpiration'] = [datetime]::MaxValue
+}
+$summary = New-AuditWindowsSummaryRecord @summaryParams
 
 # Output summary
 Write-AuditWindowsSummary -Summary $summary -SkipFileExport:$SkipSummaryExport -OutputPath $SummaryOutputPath
 
 Write-Host "`n=== Next Steps ===" -ForegroundColor Yellow
-Write-Host "1. Run Get-EntraWindowsDevices.ps1 with -UseAppRegistration to use this dedicated app" -ForegroundColor White
-Write-Host "2. Or use -UseAppAuth -TenantId '$tenantId' for certificate-based app-only auth" -ForegroundColor White
-Write-Host "3. Optionally configure Conditional Access policies targeting '$AppDisplayName'" -ForegroundColor White
+Write-Host "1. Run Get-EntraWindowsDevices.ps1 to use this dedicated app with interactive auth" -ForegroundColor White
+if ($certificate) {
+  Write-Host "2. Or use -UseAppAuth -TenantId '$tenantId' for certificate-based app-only auth" -ForegroundColor White
+  Write-Host "3. Optionally configure Conditional Access policies targeting '$AppDisplayName'" -ForegroundColor White
+} else {
+  Write-Host "2. Optionally configure Conditional Access policies targeting '$AppDisplayName'" -ForegroundColor White
+  Write-Host "   (Re-run with certificate to enable app-only auth for automation)" -ForegroundColor Gray
+}
+
+# Disconnect from Graph
+Disconnect-AuditWindowsGraph

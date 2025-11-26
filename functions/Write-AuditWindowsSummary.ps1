@@ -2,6 +2,29 @@ function Write-AuditWindowsSummary {
   <#
     .SYNOPSIS
     Outputs the provisioning summary to console and optionally to a JSON file.
+
+    .DESCRIPTION
+    Displays the Audit Windows app registration details (Application ID, Tenant ID,
+    certificate thumbprint, logo status) to the console. Optionally exports the summary
+    to a JSON file and opens the Entra Portal to the app's overview page.
+
+    .PARAMETER Summary
+    A PSObject containing the provisioning summary with properties: ApplicationId, TenantId,
+    CertificateThumbprint, CertificateExpiresOn, LogoUploaded.
+
+    .PARAMETER SkipFileExport
+    If specified, skips exporting the summary to a JSON file.
+
+    .PARAMETER OutputPath
+    Custom path for the summary JSON file. Defaults to %USERPROFILE%\AuditWindowsAppSummary.json.
+
+    .EXAMPLE
+    Write-AuditWindowsSummary -Summary $summary
+    Displays summary, exports to default JSON path, and opens Entra Portal.
+
+    .EXAMPLE
+    Write-AuditWindowsSummary -Summary $summary -SkipFileExport
+    Displays summary and opens Entra Portal without exporting JSON.
   #>
   param(
     [Parameter(Mandatory)]
@@ -25,9 +48,9 @@ function Write-AuditWindowsSummary {
     Write-Host "`nSummary exported to: $OutputPath" -ForegroundColor Cyan
   }
 
-  # Open Entra Portal to the app's credentials blade
-  $portalUrl = "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/$($Summary.ApplicationId)/isMSAApp~/false"
-  Write-Host "`nOpening Entra Portal to the Audit Windows app credentials blade..." -ForegroundColor Cyan
+  # Open Entra Portal to the app's overview page
+  $portalUrl = "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Overview/appId/$($Summary.ApplicationId)/isMSAApp~/false"
+  Write-Host "`nOpening Entra Portal to the Audit Windows app overview... (A browser window should appear)" -ForegroundColor Yellow
   try {
     Start-Process $portalUrl -ErrorAction Stop
   }
