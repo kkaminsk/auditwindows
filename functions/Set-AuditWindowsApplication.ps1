@@ -2,6 +2,31 @@ function Set-AuditWindowsApplication {
   <#
     .SYNOPSIS
     Creates or updates the Audit Windows application registration.
+
+    .DESCRIPTION
+    Creates a new Azure AD application registration or updates an existing one for the
+    Audit Windows tool. Configures the application as a public client (for interactive
+    desktop authentication) with appropriate redirect URIs and homepage URL.
+
+    Configuration includes:
+    - Single-tenant (AzureADMyOrg) sign-in audience
+    - Public client with localhost and native client redirect URIs
+    - Homepage URL pointing to the GitHub repository
+    - IsFallbackPublicClient enabled for desktop flows
+
+    .PARAMETER DisplayName
+    The display name for the application registration (e.g., 'Audit Windows').
+
+    .PARAMETER TenantId
+    The target tenant ID where the application will be created/updated.
+
+    .OUTPUTS
+    Microsoft.Graph.PowerShell.Models.MicrosoftGraphApplication
+    Returns the created or updated application object.
+
+    .EXAMPLE
+    $app = Set-AuditWindowsApplication -DisplayName 'Audit Windows' -TenantId $tenantId
+    Creates or updates the Audit Windows application and returns the app object.
   #>
   param(
     [Parameter(Mandatory)]

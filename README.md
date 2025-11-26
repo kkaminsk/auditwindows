@@ -79,14 +79,15 @@ The `Setup-AuditWindowsApp.ps1` script automates the provisioning of a dedicated
 2. **Configures public client** authentication for interactive desktop use
 3. **Sets homepage URL** to https://github.com/kkaminsk/auditwindows
 4. **Uploads a logo** if `logo.jpg` is present in the script directory
-5. **Adds Microsoft Graph permissions** and grants admin consent:
+5. **Adds Microsoft Graph permissions** (both application and delegated) and grants admin consent:
    - Device.Read.All
    - BitLockerKey.ReadBasic.All
    - DeviceLocalCredential.ReadBasic.All
    - DeviceManagementManagedDevices.Read.All
-6. **Generates a certificate credential** (X.509, no client secrets) and exports to `.cer` and `.pfx`
+6. **Optionally generates a certificate credential** (X.509, no client secrets) for app-only authentication
 7. **Outputs a JSON summary** with app details for operational records
-8. **Opens the Entra Portal** to the app's credentials blade for verification
+8. **Opens the Entra Portal** to the app's overview page for verification
+9. **Disconnects from Microsoft Graph** when complete
 
 #### Parameters
 
@@ -96,6 +97,8 @@ The `Setup-AuditWindowsApp.ps1` script automates the provisioning of a dedicated
 | `-CertificateSubject` | string | `'CN=AuditWindowsCert'` | Subject name for the generated certificate |
 | `-CertificateValidityInMonths` | int | `24` | Certificate validity (1-60 months) |
 | `-ExistingCertificateThumbprint` | string | — | Use an existing certificate from `Cert:\CurrentUser\My` |
+| `-SkipCertificate` | switch | — | Skip certificate registration (interactive auth only) |
+| `-SkipCertificateExport` | switch | — | Skip exporting certificate to `.cer`/`.pfx` files |
 | `-TenantId` | string | — | Target tenant ID (defaults to authenticated context) |
 | `-Force` | switch | — | Skip confirmation prompts |
 | `-Reauth` | switch | — | Force re-authentication even if session exists |
@@ -128,6 +131,9 @@ pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -CertificateValidityInMonths 3
 
 # Force re-authentication (useful if previous session has wrong permissions)
 pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -Reauth
+
+# Interactive auth only (skip certificate for app-only auth)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -SkipCertificate
 ```
 
 #### Output Files
@@ -135,25 +141,28 @@ pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -Reauth
 | File | Location | Description |
 |------|----------|-------------|
 | `AuditWindowsAppSummary.json` | `%USERPROFILE%` | JSON with AppId, TenantId, certificate thumbprint, expiration |
-| `AuditWindowsCert.cer` | `%USERPROFILE%` | Public certificate (for verification) |
-| `AuditWindowsCert.pfx` | `%USERPROFILE%` | Private certificate (password-protected, for backup/migration) |
+| `AuditWindowsCert.cer` | `%USERPROFILE%` | Public certificate (optional, when certificate is created) |
+| `AuditWindowsCert.pfx` | `%USERPROFILE%` | Private certificate (optional, password-protected) |
 
-#### Automatic Setup
+#### Prerequisites
 
-If `Get-EntraWindowsDevices.ps1` is run and the "Audit Windows" app doesn't exist, it will automatically invoke `Setup-AuditWindowsApp.ps1` to create the app registration before proceeding.
+You must run `Setup-AuditWindowsApp.ps1` before using `Get-EntraWindowsDevices.ps1`. The audit script requires a pre-configured "Audit Windows" app registration with admin-consented permissions.
 
 ## Usage
 
 From the repository root `auditwindows/`:
 
 ```powershell
-# Delegated (user) auth — default (uses shared Microsoft Graph PowerShell app)
+# First-time setup: Create the app registration (run once per tenant)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1
+
+# Interactive auth using the dedicated "Audit Windows" app
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
 
-# Delegated auth using the dedicated "Audit Windows" app (recommended)
-pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppRegistration
+# With device code flow (for headless/remote sessions)
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseDeviceCode
 
-# Delegated with device code, custom output, CSV, verbose
+# With custom output path and CSV export
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -OutputPath C:\Reports\WindowsAudit -ExportCSV -Verbose
 
 # App-only (certificate) auth with one-time provisioning

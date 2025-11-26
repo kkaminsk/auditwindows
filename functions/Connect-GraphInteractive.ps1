@@ -1,4 +1,24 @@
 function Connect-GraphInteractive {
+  <#
+    .SYNOPSIS
+    Connects to Microsoft Graph using the dedicated Audit Windows app registration.
+
+    .DESCRIPTION
+    Establishes an interactive delegated connection to Microsoft Graph using the pre-provisioned
+    "Audit Windows" application. The function searches for the app's service principal in the tenant
+    and uses it for authentication with the required scopes for device auditing.
+
+    If the application is not found, the function displays instructions to run Setup-AuditWindowsApp.ps1
+    and exits. Supports both standard interactive and device code authentication flows.
+
+    .NOTES
+    Requires the "Audit Windows" app to be pre-configured via Setup-AuditWindowsApp.ps1.
+    Uses script-scoped variables: $script:AppDisplayName, $script:TenantId, $script:UseDeviceCode
+
+    .EXAMPLE
+    Connect-GraphInteractive
+    Connects using the default "Audit Windows" app with interactive browser authentication.
+  #>
   $scopes = 'Device.Read.All','BitLockerKey.ReadBasic.All','DeviceLocalCredential.ReadBasic.All','DeviceManagementManagedDevices.Read.All'
   Write-Log "Connecting to Graph with scopes: $($scopes -join ', ')"
   Write-Host "Connecting to Microsoft Graph..."

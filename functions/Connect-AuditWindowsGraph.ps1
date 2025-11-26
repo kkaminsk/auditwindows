@@ -2,6 +2,35 @@ function Connect-AuditWindowsGraph {
   <#
     .SYNOPSIS
     Connects to Microsoft Graph with admin scopes for Audit Windows app provisioning.
+
+    .DESCRIPTION
+    Establishes a Microsoft Graph connection with administrative scopes required for
+    app registration management (Application.ReadWrite.All, AppRoleAssignment.ReadWrite.All).
+    
+    If an existing session has the required scopes, it is reused. Otherwise, the function
+    initiates interactive authentication. Used by Setup-AuditWindowsApp.ps1 for provisioning.
+
+    .PARAMETER Reauth
+    Forces re-authentication even if an existing valid session exists.
+
+    .PARAMETER TenantId
+    Target tenant ID. If not specified, uses the default tenant from authentication.
+
+    .OUTPUTS
+    Microsoft.Graph.PowerShell.Authentication.AuthContext
+    Returns the Graph context object for the authenticated session.
+
+    .EXAMPLE
+    $context = Connect-AuditWindowsGraph
+    Connects to Graph, reusing existing session if it has required scopes.
+
+    .EXAMPLE
+    $context = Connect-AuditWindowsGraph -Reauth
+    Forces a fresh authentication, ignoring any existing session.
+
+    .EXAMPLE
+    $context = Connect-AuditWindowsGraph -TenantId 'contoso.onmicrosoft.com'
+    Connects to a specific tenant.
   #>
   param(
     [switch]$Reauth,
