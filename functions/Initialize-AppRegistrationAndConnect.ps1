@@ -1,4 +1,45 @@
 function Initialize-AppRegistrationAndConnect {
+  <#
+    .SYNOPSIS
+    Provisions an app registration and connects using certificate authentication.
+
+    .DESCRIPTION
+    Handles app-only (certificate-based) authentication for the Windows audit script.
+    
+    If -Create is specified:
+    - Connects with admin scopes to provision the application
+    - Creates app registration if it doesn't exist
+    - Creates service principal
+    - Generates self-signed certificate if not found
+    - Attaches certificate to app keyCredentials
+    - Grants required Microsoft Graph application permissions
+    
+    Then connects to Graph using the app's certificate for app-only auth.
+
+    .PARAMETER Tenant
+    The tenant ID (GUID or domain) to connect to. Required.
+
+    .PARAMETER Name
+    The application registration name. Default: 'WindowsAuditApp'
+
+    .PARAMETER Create
+    If specified, provisions the app registration if it doesn't exist.
+
+    .PARAMETER Subject
+    The certificate subject name. Default: 'CN={Name}'
+
+    .EXAMPLE
+    Initialize-AppRegistrationAndConnect -Tenant 'contoso.onmicrosoft.com' -Create
+    Creates app if missing and connects with certificate auth.
+
+    .EXAMPLE
+    Initialize-AppRegistrationAndConnect -Tenant $tenantId -Name 'MyAuditApp' -Subject 'CN=MyAuditCert'
+    Connects using existing app and certificate.
+
+    .NOTES
+    Requires admin privileges (Global Admin or Application Admin) when using -Create.
+    Certificate is stored in Cert:\CurrentUser\My.
+  #>
   [CmdletBinding()]
   param(
     [Parameter(Mandatory=$true)][string]$Tenant,

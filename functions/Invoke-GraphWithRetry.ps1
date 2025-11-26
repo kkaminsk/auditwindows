@@ -1,4 +1,48 @@
 function Invoke-GraphWithRetry {
+  <#
+    .SYNOPSIS
+    Executes a Graph API call with automatic retry logic for transient failures.
+
+    .DESCRIPTION
+    Wraps a scriptblock that makes Graph API calls and provides:
+    - Automatic retry for HTTP 429 (throttling), 502, 503, 504 errors
+    - Exponential backoff with Retry-After header support
+    - Non-fatal error handling for specified status codes (e.g., 404)
+    - Detailed logging of all attempts, successes, and failures
+
+    .PARAMETER Script
+    The scriptblock containing the Graph API call to execute.
+
+    .PARAMETER MaxRetries
+    Maximum number of retry attempts. Default: 4
+
+    .PARAMETER OperationName
+    Friendly name for the operation (used in logging).
+
+    .PARAMETER Resource
+    The Graph resource path (used in logging).
+
+    .PARAMETER NonFatalStatusCodes
+    Array of HTTP status codes to treat as non-fatal (e.g., 404).
+    Returns NonFatalReturn value instead of throwing.
+
+    .PARAMETER NonFatalReturn
+    Value to return when a non-fatal status code is encountered.
+
+    .OUTPUTS
+    The result of the scriptblock execution, or NonFatalReturn on non-fatal error.
+
+    .EXAMPLE
+    Invoke-GraphWithRetry -OperationName 'Get-Devices' -Script { Get-MgDevice -All }
+    Executes Get-MgDevice with retry logic.
+
+    .EXAMPLE
+    Invoke-GraphWithRetry -NonFatalStatusCodes @(404) -NonFatalReturn @() -Script { ... }
+    Returns empty array if resource not found (404).
+
+    .NOTES
+    Retry wait time doubles each attempt (max 60s), or uses Retry-After header.
+  #>
   param(
     [scriptblock]$Script,
     [int]$MaxRetries=4,

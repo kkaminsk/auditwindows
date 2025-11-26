@@ -1,4 +1,30 @@
 function Import-GraphModuleIfNeeded {
+  <#
+    .SYNOPSIS
+    Imports Microsoft Graph PowerShell SDK modules required for device auditing.
+
+    .DESCRIPTION
+    Checks for required Graph SDK commands and imports the necessary submodules.
+    Installs modules from PowerShell Gallery if not available locally.
+    
+    Loads only targeted submodules to avoid meta-module assembly conflicts:
+    - Microsoft.Graph.Authentication
+    - Microsoft.Graph.Identity.DirectoryManagement
+    - Microsoft.Graph.DeviceManagement
+    - Microsoft.Graph.Applications (only if -UseAppAuth)
+    - Microsoft.Graph.ServicePrincipals (only if -UseAppAuth)
+
+    If import fails due to assembly conflicts, attempts path-based import.
+    Falls back to REST API via Invoke-MgGraphRequest if cmdlets unavailable.
+
+    .NOTES
+    Uses script-scoped variables $script:UseAppAuth and $script:CreateAppIfMissing
+    to determine which modules to load.
+
+    .EXAMPLE
+    Import-GraphModuleIfNeeded
+    Imports required Graph modules for device auditing.
+  #>
   # Prefer targeted submodules to avoid meta-module assembly conflicts
   # Note: InformationProtection module may not exist in all SDK versions; REST fallback handles this
   $neededModules = @(
