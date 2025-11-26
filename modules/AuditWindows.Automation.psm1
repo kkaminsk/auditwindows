@@ -138,7 +138,7 @@ function New-AuditWindowsSummaryRecord {
 function Get-AuditWindowsGraphResourceAccess {
   <#
     .SYNOPSIS
-    Builds the RequiredResourceAccess structure for Microsoft Graph based on a service principal's app roles.
+    Builds the RequiredResourceAccess structure for Microsoft Graph based on a service principal's app roles and delegated scopes.
   #>
   param(
     [Parameter(Mandatory)] $ServicePrincipal,
@@ -155,18 +155,32 @@ function Get-AuditWindowsGraphResourceAccess {
 
   $resourceAccess = @()
   foreach ($permission in $PermissionNames | Select-Object -Unique) {
+    # Add application permission (Role) for app-only auth
     $role = $ServicePrincipal.AppRoles | Where-Object {
       $_.Value -eq $permission -and $_.AllowedMemberTypes -contains 'Application'
     }
 
-    if (-not $role) {
-      Write-Warning "Permission '$permission' not found on service principal $($ServicePrincipal.AppId)."
-      continue
+    if ($role) {
+      $resourceAccess += @{
+        Id   = $role.Id
+        Type = 'Role'
+      }
+    } else {
+      Write-Warning "Application permission '$permission' not found on service principal $($ServicePrincipal.AppId)."
     }
 
-    $resourceAccess += @{
-      Id   = $role.Id
-      Type = 'Role'
+    # Add delegated permission (Scope) for interactive auth
+    $scope = $ServicePrincipal.Oauth2PermissionScopes | Where-Object {
+      $_.Value -eq $permission
+    }
+
+    if ($scope) {
+      $resourceAccess += @{
+        Id   = $scope.Id
+        Type = 'Scope'
+      }
+    } else {
+      Write-Warning "Delegated permission '$permission' not found on service principal $($ServicePrincipal.AppId)."
     }
   }
 
