@@ -23,60 +23,14 @@ function Connect-GraphInteractive {
     $dedicatedApp = Get-MgServicePrincipal -Filter "displayName eq '$appName' and servicePrincipalType eq 'Application'" -ErrorAction SilentlyContinue | Select-Object -First 1
     
     if (-not $dedicatedApp) {
-      # App not found - run Setup-AuditWindowsApp.ps1 to create it
-      Write-Host ""
-      Write-Host "Application '$appName' not found. Running setup to create it..." -ForegroundColor Yellow
-      Write-Log "Dedicated app '$appName' not found, invoking Setup-AuditWindowsApp.ps1" 'INFO'
-      
+      # App not found - user must run Setup-AuditWindowsApp.ps1 separately
       Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-      
-      # Locate and run the setup script
-      $setupScript = Join-Path -Path $PSScriptRoot -ChildPath '..\Setup-AuditWindowsApp.ps1'
-      if (-not (Test-Path -Path $setupScript)) {
-        $setupScript = Join-Path -Path $PSScriptRoot -ChildPath 'Setup-AuditWindowsApp.ps1'
-      }
-      if (-not (Test-Path -Path $setupScript)) {
-        # Try from script root of main script
-        $setupScript = Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath 'Setup-AuditWindowsApp.ps1'
-      }
-      
-      if (-not (Test-Path -Path $setupScript)) {
-        Write-Host "ERROR: Setup-AuditWindowsApp.ps1 not found." -ForegroundColor Red
-        Write-Log "Setup script not found at expected locations" 'ERROR'
-        throw "Setup-AuditWindowsApp.ps1 not found. Please run it manually to create the '$appName' application."
-      }
-      
+      Write-Log "Dedicated app '$appName' not found in tenant" 'WARN'
       Write-Host ""
-      Write-Host "Launching Setup-AuditWindowsApp.ps1..." -ForegroundColor Cyan
-      Write-Log "Invoking setup script: $setupScript" 'INFO'
-      
-      # Run the setup script with the app name
-      $setupParams = @{
-        AppDisplayName = $appName
-      }
-      if ($tenantId) {
-        $setupParams['TenantId'] = $tenantId
-      }
-      
-      & $setupScript @setupParams
-      
+      Write-Host "Please run Setup-AuditWindowsApp.ps1 first to create the application:" -ForegroundColor Yellow
+      Write-Host "  .\Setup-AuditWindowsApp.ps1" -ForegroundColor White
       Write-Host ""
-      Write-Host "Setup complete. Reconnecting to find the new application..." -ForegroundColor Cyan
-      Write-Log "Setup script completed, reconnecting to verify app creation" 'INFO'
-      
-      # Reconnect and find the newly created app
-      Connect-MgGraph -Scopes 'Application.Read.All' -NoWelcome -ErrorAction Stop | Out-Null
-      $dedicatedApp = Get-MgServicePrincipal -Filter "displayName eq '$appName' and servicePrincipalType eq 'Application'" -ErrorAction SilentlyContinue | Select-Object -First 1
-      
-      if (-not $dedicatedApp) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-        Write-Host "ERROR: Application '$appName' still not found after setup." -ForegroundColor Red
-        Write-Log "App '$appName' not found after running setup script" 'ERROR'
-        throw "Application '$appName' was not created successfully. Check the setup script output for errors."
-      }
-      
-      Write-Host "Application '$appName' created successfully." -ForegroundColor Green
-      Write-Log "App '$appName' found after setup" 'INFO'
+      exit 1
     }
     
     Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
