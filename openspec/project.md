@@ -39,7 +39,7 @@ PowerShell 7 tooling to audit Windows devices in Entra ID (Azure AD) and surface
 Audits Entra ID Windows devices (including Intune-managed) for security posture: BitLocker recovery key backup presence (per OS/Data drive) and LAPS password availability, plus device metadata (Enabled, UPN, MDM, activity, last check-in).
 
 ## Important Constraints
-- Requires Graph delegated scopes: Device.Read.All, BitLockerKey.Read.All, Directory.Read.All, DeviceLocalCredential.Read.All, DeviceManagementManagedDevices.Read.All
+- Requires Graph delegated scopes: Device.Read.All, BitLockerKey.ReadBasic.All, DeviceLocalCredential.ReadBasic.All, DeviceManagementManagedDevices.Read.All
 - App-only requires equivalent application permissions; provisioning demands admin consent; certificate handling must stay secure
 - Network access to Microsoft Graph is required; tool is read-only aside from optional app provisioning
 - Avoid exposing secrets; only report existence/backup status

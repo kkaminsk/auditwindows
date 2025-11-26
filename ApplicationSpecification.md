@@ -47,9 +47,8 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 ### **Required Graph API Scopes**
 
 - `Device.Read.All`
-- `BitLockerKey.Read.All`
-- `Directory.Read.All`
-- `DeviceLocalCredential.Read.All`
+- `BitLockerKey.ReadBasic.All`
+- `DeviceLocalCredential.ReadBasic.All`
 - `DeviceManagementManagedDevices.Read.All`
 
 ### **Recommended Azure Roles**
@@ -61,6 +60,7 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 ### **Authentication Methods**
 
 - **Delegated (interactive)**: default; supports `-UseDeviceCode` for device code flow.
+- **Delegated with dedicated app**: use `-UseAppRegistration` to authenticate via the pre-provisioned "Audit Windows" app registration instead of the shared Microsoft Graph PowerShell app. This provides a clear audit trail in Entra sign-in logs and enables Conditional Access targeting.
 - **App-only (certificate)**: enable with `-UseAppAuth`; requires `-TenantId`. If `-CreateAppIfMissing` is set, the script will:
   - Create an application and service principal (display name from `-AppName`, default `WindowsAuditApp`).
   - Create or reuse a self-signed certificate in `Cert:\CurrentUser\My` (subject from `-CertSubject`, default `CN=<AppName>`).
@@ -146,6 +146,7 @@ The **Windows Audit Application** is a PowerShell 7 script that connects to **Mi
 | `-UseDeviceCode`       | Use device code flow for delegated authentication.         |
 | `-MaxDevices <n>`      | Process only the first N devices (for testing).           |
 | `-UseAppAuth`          | Use app-only certificate authentication.                  |
+| `-UseAppRegistration`  | Use dedicated "Audit Windows" app for delegated auth.     |
 | `-CreateAppIfMissing`  | Provision the app registration if not present.            |
 | `-AppName <name>`      | App registration display name (default: WindowsAuditApp). |
 | `-TenantId <guid>`     | Tenant to connect with app-only auth.                     |
