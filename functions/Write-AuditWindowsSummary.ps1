@@ -25,9 +25,9 @@ function Write-AuditWindowsSummary {
     Write-Host "`nSummary exported to: $OutputPath" -ForegroundColor Cyan
   }
 
-  # Open Entra Portal to the app's credentials blade
-  $portalUrl = "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/$($Summary.ApplicationId)/isMSAApp~/false"
-  Write-Host "`nOpening Entra Portal to the Audit Windows app credentials blade..." -ForegroundColor Cyan
+  # Open Entra Portal to the app's overview page
+  $portalUrl = "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Overview/appId/$($Summary.ApplicationId)/isMSAApp~/false"
+  Write-Host "`nOpening Entra Portal to the Audit Windows app overview..." -ForegroundColor Cyan
   try {
     Start-Process $portalUrl -ErrorAction Stop
   }

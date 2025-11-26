@@ -17,6 +17,8 @@
     Validity period for the generated certificate (1-60 months). Default: 24
 .PARAMETER ExistingCertificateThumbprint
     Thumbprint of an existing certificate in Cert:\CurrentUser\My to use instead of generating a new one.
+.PARAMETER SkipCertificateExport
+    Skip exporting the certificate to .cer and .pfx files. The certificate remains in Cert:\CurrentUser\My.
 .PARAMETER TenantId
     Target tenant ID. If not specified, uses the default tenant from the authenticated context.
 .PARAMETER Force
@@ -48,6 +50,7 @@ param(
   [ValidateRange(1, 60)]
   [int]$CertificateValidityInMonths = 24,
   [string]$ExistingCertificateThumbprint,
+  [switch]$SkipCertificateExport,
   [string]$TenantId,
   [switch]$Force,
   [switch]$Reauth,
@@ -124,7 +127,8 @@ $certificate = Set-AuditWindowsKeyCredential `
   -Application $app `
   -CertificateSubject $CertificateSubject `
   -CertificateValidityInMonths $CertificateValidityInMonths `
-  -ExistingCertificateThumbprint $ExistingCertificateThumbprint
+  -ExistingCertificateThumbprint $ExistingCertificateThumbprint `
+  -SkipExport:$SkipCertificateExport
 
 # Create summary
 $summary = New-AuditWindowsSummaryRecord `
@@ -141,3 +145,6 @@ Write-Host "`n=== Next Steps ===" -ForegroundColor Yellow
 Write-Host "1. Run Get-EntraWindowsDevices.ps1 with -UseAppRegistration to use this dedicated app" -ForegroundColor White
 Write-Host "2. Or use -UseAppAuth -TenantId '$tenantId' for certificate-based app-only auth" -ForegroundColor White
 Write-Host "3. Optionally configure Conditional Access policies targeting '$AppDisplayName'" -ForegroundColor White
+
+# Disconnect from Graph
+Disconnect-AuditWindowsGraph

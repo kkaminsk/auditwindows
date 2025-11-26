@@ -69,21 +69,78 @@ For production use, create a dedicated "Audit Windows" app registration instead 
 - **Pre-consented permissions** — No user self-consent required
 - **Independent lifecycle** — Revoke without affecting other Graph PowerShell usage
 
-### One-time setup (run as Global Admin or Application Admin)
+### Setup-AuditWindowsApp.ps1
+
+The `Setup-AuditWindowsApp.ps1` script automates the provisioning of a dedicated Azure AD app registration for the Audit Windows tool.
+
+#### What it does
+
+1. **Creates or updates** the "Audit Windows" app registration (single-tenant)
+2. **Configures public client** authentication for interactive desktop use
+3. **Sets homepage URL** to https://github.com/kkaminsk/auditwindows
+4. **Uploads a logo** if `logo.jpg` is present in the script directory
+5. **Adds Microsoft Graph permissions** and grants admin consent:
+   - Device.Read.All
+   - BitLockerKey.ReadBasic.All
+   - DeviceLocalCredential.ReadBasic.All
+   - DeviceManagementManagedDevices.Read.All
+6. **Generates a certificate credential** (X.509, no client secrets) and exports to `.cer` and `.pfx`
+7. **Outputs a JSON summary** with app details for operational records
+8. **Opens the Entra Portal** to the app's credentials blade for verification
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `-AppDisplayName` | string | `'Audit Windows'` | Display name for the app registration |
+| `-CertificateSubject` | string | `'CN=AuditWindowsCert'` | Subject name for the generated certificate |
+| `-CertificateValidityInMonths` | int | `24` | Certificate validity (1-60 months) |
+| `-ExistingCertificateThumbprint` | string | — | Use an existing certificate from `Cert:\CurrentUser\My` |
+| `-TenantId` | string | — | Target tenant ID (defaults to authenticated context) |
+| `-Force` | switch | — | Skip confirmation prompts |
+| `-Reauth` | switch | — | Force re-authentication even if session exists |
+| `-SkipSummaryExport` | switch | — | Skip exporting the summary JSON file |
+| `-SummaryOutputPath` | string | — | Custom path for the summary JSON file |
+
+#### Requirements
+
+- PowerShell 7+
+- Run as **Global Administrator** or **Application Administrator**
+- Microsoft Graph PowerShell SDK (auto-installed if missing)
+
+#### Usage Examples
 
 ```powershell
-# Optionally place logo.jpg in the script directory for app branding
+# Basic setup with default settings (interactive)
 pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1
 
-# Or specify a tenant and skip prompts
+# Specify tenant and skip confirmation prompts
 pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId 'contoso.onmicrosoft.com' -Force
+
+# Use a custom app name
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -AppDisplayName 'Windows Security Audit'
+
+# Use an existing certificate instead of generating a new one
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -ExistingCertificateThumbprint 'ABC123DEF456...'
+
+# Generate certificate with longer validity
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -CertificateValidityInMonths 36
+
+# Force re-authentication (useful if previous session has wrong permissions)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -Reauth
 ```
 
-This creates:
-- An "Audit Windows" app registration with the 4 required permissions
-- Admin consent for all permissions
-- A certificate credential (stored in `Cert:\CurrentUser\My`)
-- A JSON summary file (`AuditWindowsAppSummary.json`)
+#### Output Files
+
+| File | Location | Description |
+|------|----------|-------------|
+| `AuditWindowsAppSummary.json` | `%USERPROFILE%` | JSON with AppId, TenantId, certificate thumbprint, expiration |
+| `AuditWindowsCert.cer` | `%USERPROFILE%` | Public certificate (for verification) |
+| `AuditWindowsCert.pfx` | `%USERPROFILE%` | Private certificate (password-protected, for backup/migration) |
+
+#### Automatic Setup
+
+If `Get-EntraWindowsDevices.ps1` is run and the "Audit Windows" app doesn't exist, it will automatically invoke `Setup-AuditWindowsApp.ps1` to create the app registration before proceeding.
 
 ## Usage
 

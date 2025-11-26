@@ -10,7 +10,8 @@ function Set-AuditWindowsKeyCredential {
     $Application,
     [string]$CertificateSubject = 'CN=AuditWindowsCert',
     [int]$CertificateValidityInMonths = 24,
-    [string]$ExistingCertificateThumbprint
+    [string]$ExistingCertificateThumbprint,
+    [switch]$SkipExport
   )
 
   $certificate = $null
@@ -44,23 +45,27 @@ function Set-AuditWindowsKeyCredential {
 
     Write-Host "Certificate generated: $($certificate.Subject) (Thumbprint: $($certificate.Thumbprint), Expires: $notAfter)" -ForegroundColor Green
 
-    # Export certificate artifacts
-    $paths = Get-AuditWindowsCertificateArtifactPaths -BaseName ($CertificateSubject -replace '^CN=', '')
-    
-    # Export .cer (public key only)
-    Export-Certificate -Cert $certificate -FilePath $paths.Cer -Type CERT | Out-Null
-    Write-Host "Public certificate exported to: $($paths.Cer)" -ForegroundColor Green
+    # Export certificate artifacts (optional)
+    if (-not $SkipExport) {
+      $skipBackup = Read-Host -Prompt 'Skip certificate file backup? (y/N)'
+      if ($skipBackup -eq 'y' -or $skipBackup -eq 'Y') {
+        Write-Host "Certificate file export skipped (stored in Cert:\CurrentUser\My)." -ForegroundColor Yellow
+      }
+      else {
+        $paths = Get-AuditWindowsCertificateArtifactPaths -BaseName ($CertificateSubject -replace '^CN=', '')
+        
+        # Export .cer (public key only)
+        Export-Certificate -Cert $certificate -FilePath $paths.Cer -Type CERT | Out-Null
+        Write-Host "Public certificate exported to: $($paths.Cer)" -ForegroundColor Green
 
-    # Export .pfx (with private key, requires password)
-    $pfxPassword = Read-Host -Prompt 'Enter password for PFX export (or press Enter for no password)' -AsSecureString
-    if ($pfxPassword.Length -gt 0) {
-      Export-PfxCertificate -Cert $certificate -FilePath $paths.Pfx -Password $pfxPassword | Out-Null
+        # Export .pfx (with private key)
+        $pfxPassword = Read-Host -Prompt 'Enter password for PFX export' -AsSecureString
+        Export-PfxCertificate -Cert $certificate -FilePath $paths.Pfx -Password $pfxPassword | Out-Null
+        Write-Host "Private certificate exported to: $($paths.Pfx)" -ForegroundColor Green
+      }
+    } else {
+      Write-Host "Certificate file export skipped (stored in Cert:\CurrentUser\My)." -ForegroundColor Yellow
     }
-    else {
-      # PowerShell 7 allows export without password
-      Export-PfxCertificate -Cert $certificate -FilePath $paths.Pfx -NoPassword | Out-Null
-    }
-    Write-Host "Private certificate exported to: $($paths.Pfx)" -ForegroundColor Green
   }
 
   # Check if certificate is already attached to the app
@@ -83,21 +88,14 @@ function Set-AuditWindowsKeyCredential {
   }
 
   try {
-    # Get existing key credentials and add the new one
-    $existingKeys = @($Application.KeyCredentials | ForEach-Object {
-      @{
-        Type          = $_.Type
-        Usage         = $_.Usage
-        Key           = $_.Key
-        DisplayName   = $_.DisplayName
-        StartDateTime = $_.StartDateTime
-        EndDateTime   = $_.EndDateTime
-        KeyId         = $_.KeyId
-      }
-    })
-    $allKeys = $existingKeys + @($keyCredential)
+    # Note: We cannot preserve existing key credentials because Microsoft Graph doesn't return
+    # the Key (certificate data) property for security reasons. Setting new credentials will
+    # replace any existing ones. This is expected behavior for a setup script.
+    if ($Application.KeyCredentials -and $Application.KeyCredentials.Count -gt 0) {
+      Write-Host "Note: Replacing $($Application.KeyCredentials.Count) existing certificate(s) with new certificate." -ForegroundColor Yellow
+    }
 
-    Update-MgApplication -ApplicationId $Application.Id -KeyCredentials $allKeys -ErrorAction Stop | Out-Null
+    Update-MgApplication -ApplicationId $Application.Id -KeyCredentials @($keyCredential) -ErrorAction Stop | Out-Null
     Write-Host 'Certificate attached successfully.' -ForegroundColor Green
   }
   catch {

@@ -21,10 +21,24 @@ function Connect-AuditWindowsGraph {
 
   $context = Get-MgContext
 
-  # Check if we have a valid existing session
+  # Check if we have a valid existing session WITH the required admin scopes
   if ($context -and $context.Account) {
-    Write-Host "Using existing Microsoft Graph session as $($context.Account)" -ForegroundColor Green
-    return $context
+    # Verify the session has the required scopes for app management
+    $hasRequiredScopes = $true
+    foreach ($requiredScope in $scopes) {
+      if ($context.Scopes -notcontains $requiredScope) {
+        $hasRequiredScopes = $false
+        break
+      }
+    }
+    
+    if ($hasRequiredScopes) {
+      Write-Host "Using existing Microsoft Graph session as $($context.Account)" -ForegroundColor Green
+      return $context
+    } else {
+      Write-Host "Existing session lacks required admin scopes. Re-authenticating..." -ForegroundColor Yellow
+      Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+    }
   }
 
   # No existing session - need to authenticate
