@@ -59,19 +59,30 @@ The administrator running the provisioning script (`-CreateAppIfMissing`) requir
 | `Application.ReadWrite.All` | Delegated | Create and update the application registration |
 | `AppRoleAssignment.ReadWrite.All` | Delegated | Grant application permissions (app roles) to the service principal |
 
-**Recommended Azure AD Roles** (any one of):
+**Required Azure AD Role** (one of the following):
 
-For installation with Entra ID the user needs one of the following roles.
-
-- **Application Administrator**
-- **Cloud Application Administrator**
-- **Global Administrator** (if other roles are not available)
+| Role | Purpose |
+|------|--------|
+| **Application Administrator** | Create/manage app registrations and grant admin consent (Recommended) |
+| **Cloud Application Administrator** | Same as above, but cannot manage on-premises apps |
+| **Global Administrator** | Full access, if other roles are not available |
 
 **Duration**: These permissions are only required during the initial provisioning or when updating application permissions. They are **not** required for subsequent report execution.
 
 ### 4.2 Application Permissions (Runtime)
 
-Once provisioned, the application registration (`WindowsAuditApp`) requires the following **application** (app-only) permissions on **Microsoft Graph**:
+Once provisioned, the application registration (`WindowsAuditApp`) requires the following **application** (app-only) permissions on **Microsoft Graph**.
+
+**Required Azure AD Role to Run Get-EntraWindowsDevices.ps1** (one of the following):
+
+| Role | Covers |
+|------|--------|
+| **Intune Administrator** | All permissions below (Recommended) |
+| **Global Reader** | Device.Read.All, BitLockerKey.ReadBasic.All, DeviceLocalCredential.ReadBasic.All |
+| **Security Reader** | Device.Read.All, BitLockerKey.ReadBasic.All |
+| **Cloud Device Administrator** | Device.Read.All only |
+
+**Application Permissions:**
 
 | Permission | Type | Purpose | Risk Level |
 |------------|------|---------|------------|
@@ -148,8 +159,8 @@ pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>'
 
 **Usage after setup:**
 ```powershell
-# Delegated auth using the dedicated app
-pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppRegistration
+# Delegated auth using the dedicated app (interactive)
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
 
 # App-only auth using certificate
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>'
