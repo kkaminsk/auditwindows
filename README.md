@@ -3,6 +3,24 @@ Windows Audit Application (PowerShell 7) to inventory Windows devices from Entra
 
 ## Version
 
+1.2 (2025-11-26)
+
+- Permissions reduced
+- Non-Interactive mode optional
+  - Disabled by default
+  - Certificate backup optional
+- Two scripts for use
+  - Setup script for custom application registration
+    - Better access control
+    - Conditional access controls
+    - Better logging
+    - Branding
+      - Logo
+      - URL
+  - Execution script for collecting data
+    - Looks for the Audit Windows Application in Entra
+    - Logs output CSV and XML in the documents folder.
+
 1.0 (2025-10-08)
 
 ## Author
@@ -33,32 +51,54 @@ https://chatgpt.com/g/g-68e6e364e48c8191993f38b9a190af02
 
 ## Permissions and Roles
 
-Delegated Microsoft Graph scopes requested interactively:
+### Setup-AuditWindowsApp.ps1
 
-- Device.Read.All
-- BitLockerKey.ReadBasic.All
-- DeviceLocalCredential.ReadBasic.All
-- DeviceManagementManagedDevices.Read.All (required to populate LastCheckIn/Activity via Intune)
+**Required Azure AD Role**:
 
-Application (app-only) permissions required when using `-UseAppAuth`:
+| Role | Purpose |
+|------|---------|
+| **Global Administrator** | Full access to create apps, grant consent, manage all settings |
+| **Application Administrator** | Create/manage app registrations and grant admin consent (Recommended) |
+| **Cloud Application Administrator** | Same as above, but cannot manage on-premises apps |
 
-- Device.Read.All
-- BitLockerKey.ReadBasic.All
-- DeviceLocalCredential.ReadBasic.All
-- DeviceManagementManagedDevices.Read.All
+**Required Microsoft Graph Scopes** (requested interactively):
 
-Provisioning (admin-consent) scopes used when `-CreateAppIfMissing` is specified:
+- `Application.ReadWrite.All` — Create and update app registrations
+- `AppRoleAssignment.ReadWrite.All` — Grant admin consent for app permissions
 
-- Application.ReadWrite.All
-- AppRoleAssignment.ReadWrite.All
+---
 
-Recommended Azure roles (any one that covers the above):
+### Get-EntraWindowsDevices.ps1
 
-- Global Reader
-- Intune Administrator
-- Security Reader
+**Required Azure AD Role**:
 
-Note: If `DeviceManagementManagedDevices.Read.All` isn’t granted, Intune enrichment is skipped and `LastCheckIn`/`Activity` may be null.
+| Role | Covers |
+|------|--------|
+| **Global Reader** | Device.Read.All, BitLockerKey.ReadBasic.All, DeviceLocalCredential.ReadBasic.All |
+| **Intune Administrator** | All above + DeviceManagementManagedDevices.Read.All (Recommended) |
+| **Security Reader** | Device.Read.All, BitLockerKey.ReadBasic.All |
+| **Cloud Device Administrator** | Device.Read.All only |
+
+**Delegated Microsoft Graph Scopes** (interactive mode):
+
+- `Device.Read.All` — Read device information from Entra ID
+- `BitLockerKey.ReadBasic.All` — Read BitLocker recovery key metadata
+- `DeviceLocalCredential.ReadBasic.All` — Check LAPS credential availability
+- `DeviceManagementManagedDevices.Read.All` — Read Intune managed device info (LastCheckIn/Activity)
+
+**Application Permissions** (app-only mode with `-UseAppAuth`):
+
+- `Device.Read.All`
+- `BitLockerKey.ReadBasic.All`
+- `DeviceLocalCredential.ReadBasic.All`
+- `DeviceManagementManagedDevices.Read.All`
+
+**Provisioning Scopes** (when using `-CreateAppIfMissing`):
+
+- `Application.ReadWrite.All`
+- `AppRoleAssignment.ReadWrite.All`
+
+> **Note:** If `DeviceManagementManagedDevices.Read.All` isn't granted, Intune enrichment is skipped and `LastCheckIn`/`Activity` will be null.
 
 ## Setup: Dedicated App Registration (Recommended)
 
@@ -267,5 +307,4 @@ When `-ExportCSV` is used, the CSV also includes:
 - Richer ManagedDevice fields
 - Optional HTML report
 - Package as a PowerShell module; optional Key Vault storage for certificate/private key; support managed identity where feasible
-
 
