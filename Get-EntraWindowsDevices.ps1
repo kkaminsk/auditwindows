@@ -12,7 +12,11 @@ param(
   [string]$TenantId,
   [string]$CertSubject,
   [switch]$SkipModuleImport,
-  [string]$DeviceName
+  [string]$DeviceName,
+  [switch]$SkipCertificateHealthCheck,
+  [switch]$UseKeyVault,
+  [string]$VaultName,
+  [string]$KeyVaultCertificateName = 'AuditWindowsCert'
 )
 
 $start = Get-Date
@@ -45,7 +49,65 @@ if (-not $SkipModuleImport) {
 }
 if ($UseAppAuth) {
   if (-not $TenantId -or $TenantId.Trim() -eq '') { throw "-TenantId is required when using -UseAppAuth." }
-  Initialize-AppRegistrationAndConnect -Tenant $TenantId -Name $AppName -Create:$CreateAppIfMissing -Subject $CertSubject
+
+  if ($UseKeyVault) {
+    # Key Vault certificate authentication
+    if (-not $VaultName) { throw "-VaultName is required when using -UseKeyVault." }
+
+    Write-Host "Using Azure Key Vault for certificate authentication..." -ForegroundColor Cyan
+    Write-Log "Using Key Vault certificate. Vault=$VaultName CertificateName=$KeyVaultCertificateName" 'INFO'
+
+    $kvResult = Get-AuditWindowsKeyVaultCertificate -VaultName $VaultName -CertificateName $KeyVaultCertificateName
+    if (-not $kvResult.Success) {
+      throw "Key Vault certificate retrieval failed: $($kvResult.Message)"
+    }
+
+    # Certificate health check for Key Vault certificate (unless suppressed)
+    if (-not $SkipCertificateHealthCheck) {
+      $healthCheck = Test-AuditWindowsCertificateHealth -CertificateThumbprint $kvResult.Thumbprint
+      if (-not $healthCheck.Healthy) {
+        Write-Host ""
+        Write-Host "WARNING: Certificate health check failed!" -ForegroundColor Yellow
+        Write-Host $healthCheck.Message -ForegroundColor Yellow
+        Write-Host ""
+        Write-Log ("Certificate health check: {0}" -f $healthCheck.Message) 'WARN'
+      } else {
+        Write-Log ("Certificate health check: {0}" -f $healthCheck.Message) 'INFO'
+      }
+    }
+
+    # Look up the application
+    Write-Host "Looking up application '$AppName'..." -ForegroundColor Cyan
+    Connect-MgGraph -UseDeviceCode -Scopes 'Application.Read.All' -NoWelcome -ErrorAction Stop | Out-Null
+    $app = Get-MgApplication -Filter "displayName eq '$AppName'" -All | Select-Object -First 1
+    Disconnect-MgGraph | Out-Null
+    if (-not $app) { throw "Application '$AppName' not found. Run Setup-AuditWindowsApp.ps1 first." }
+
+    # Connect with Key Vault certificate
+    Write-Host "Connecting to Graph with Key Vault certificate..." -ForegroundColor Cyan
+    Connect-MgGraph -TenantId $TenantId -ClientId $app.AppId -CertificateThumbprint $kvResult.Thumbprint -NoWelcome -ErrorAction Stop | Out-Null
+    Write-Log ("Connected (app-only via Key Vault). Tenant={0} AppId={1}" -f $TenantId, $app.AppId) 'INFO'
+    Write-Host ("Connected (app-only via Key Vault). Tenant={0} AppId={1}" -f $TenantId, $app.AppId)
+  }
+  else {
+    # Local certificate authentication
+    # Certificate health check for app-only auth (unless suppressed)
+    if (-not $SkipCertificateHealthCheck) {
+      $certSubjectToCheck = if ($CertSubject) { $CertSubject } else { "CN=$AppName" }
+      $healthCheck = Test-AuditWindowsCertificateHealth -CertificateSubject $certSubjectToCheck
+      if (-not $healthCheck.Healthy) {
+        Write-Host ""
+        Write-Host "WARNING: Certificate health check failed!" -ForegroundColor Yellow
+        Write-Host $healthCheck.Message -ForegroundColor Yellow
+        Write-Host ""
+        Write-Log ("Certificate health check: {0}" -f $healthCheck.Message) 'WARN'
+      } else {
+        Write-Log ("Certificate health check: {0}" -f $healthCheck.Message) 'INFO'
+      }
+    }
+
+    Initialize-AppRegistrationAndConnect -Tenant $TenantId -Name $AppName -Create:$CreateAppIfMissing -Subject $CertSubject
+  }
 } else {
   Connect-GraphInteractive
 }

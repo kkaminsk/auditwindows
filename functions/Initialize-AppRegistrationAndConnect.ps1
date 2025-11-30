@@ -45,7 +45,8 @@ function Initialize-AppRegistrationAndConnect {
     [Parameter(Mandatory=$true)][string]$Tenant,
     [Parameter()][string]$Name = 'WindowsAuditApp',
     [Parameter()][switch]$Create,
-    [Parameter()][string]$Subject
+    [Parameter()][string]$Subject,
+    [Parameter()][switch]$NonExportable
   )
   if (-not $Subject -or $Subject.Trim() -eq '') { $Subject = "CN=$Name" }
   Write-Host ("App-based auth requested. TenantId={0} AppName={1}" -f $Tenant, $Name)
@@ -78,9 +79,13 @@ function Initialize-AppRegistrationAndConnect {
 
     $cert = Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object { $_.Subject -eq $Subject } | Sort-Object NotAfter -Descending | Select-Object -First 1
     if (-not $cert) {
-      Write-Host ("Creating self-signed certificate {0}..." -f $Subject)
-      $cert = New-SelfSignedCertificate -Subject $Subject -CertStoreLocation Cert:\CurrentUser\My -KeyExportPolicy Exportable -KeySpec Signature -KeyLength 2048 -NotAfter (Get-Date).AddYears(2)
-      Write-Log ("Created certificate Thumbprint={0}" -f $cert.Thumbprint) 'INFO'
+      $exportPolicy = if ($NonExportable) { 'NonExportable' } else { 'Exportable' }
+      Write-Host ("Creating self-signed certificate {0} (KeyExportPolicy: {1})..." -f $Subject, $exportPolicy)
+      $cert = New-SelfSignedCertificate -Subject $Subject -CertStoreLocation Cert:\CurrentUser\My -KeyExportPolicy $exportPolicy -KeySpec Signature -KeyLength 2048 -NotAfter (Get-Date).AddYears(2)
+      Write-Log ("Created certificate Thumbprint={0} KeyExportPolicy={1}" -f $cert.Thumbprint, $exportPolicy) 'INFO'
+      if ($NonExportable) {
+        Write-Host "Certificate created with non-exportable private key (cannot be backed up or migrated)." -ForegroundColor Yellow
+      }
     } else {
       Write-Host ("Using existing certificate Thumbprint={0}" -f $cert.Thumbprint)
     }

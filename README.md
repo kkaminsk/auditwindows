@@ -139,6 +139,10 @@ The `Setup-AuditWindowsApp.ps1` script automates the provisioning of a dedicated
 | `-ExistingCertificateThumbprint` | string | — | Use an existing certificate from `Cert:\CurrentUser\My` |
 | `-SkipCertificate` | switch | — | Skip certificate registration (interactive auth only) |
 | `-SkipCertificateExport` | switch | — | Skip exporting certificate to `.cer`/`.pfx` files |
+| `-NonExportable` | switch | — | Create certificate with non-exportable private key |
+| `-UseKeyVault` | switch | — | Use Azure Key Vault for certificate storage |
+| `-VaultName` | string | — | Name of the Azure Key Vault (required with `-UseKeyVault`) |
+| `-KeyVaultCertificateName` | string | `'AuditWindowsCert'` | Name of the certificate in Key Vault |
 | `-TenantId` | string | — | Target tenant ID (defaults to authenticated context) |
 | `-Force` | switch | — | Skip confirmation prompts |
 | `-Reauth` | switch | — | Force re-authentication even if session exists |
@@ -278,11 +282,111 @@ while ($reader.Read()) { }
 $reader.Dispose()
 ```
 
+## Certificate Storage Options
+
+The Audit Windows tool supports multiple certificate storage options for app-only authentication, each with different security characteristics.
+
+### Storage Option Comparison
+
+| Feature | Exportable (Default) | Non-Exportable | Azure Key Vault |
+|---------|---------------------|----------------|-----------------|
+| Private key backup | Yes (.pfx export) | No | Automatic |
+| Migration to another machine | Yes | No | Yes (download from vault) |
+| Protection against theft | Low | Medium | High (HSM with Premium) |
+| Additional infrastructure | None | None | Azure Key Vault |
+| Audit logging | Windows Security Log | Windows Security Log | Azure Monitor |
+| Recovery if lost | Restore from .pfx | Re-run setup script | Download from vault |
+
+### Option 1: Exportable Certificate (Default)
+
+Standard certificate with exportable private key. Can be backed up to `.pfx` file.
+
+```powershell
+# Default behavior - certificate can be exported
+.\Setup-AuditWindowsApp.ps1
+
+# Explicitly skip export prompt
+.\Setup-AuditWindowsApp.ps1 -SkipCertificateExport
+```
+
+**Trade-offs:**
+- Any process running under the same user can export the private key
+- Risk of credential theft on compromised workstations
+- Can be backed up and migrated (useful for disaster recovery)
+
+### Option 2: Non-Exportable Certificate (Recommended for Security)
+
+Certificate with non-exportable private key. Cannot be backed up but provides stronger protection.
+
+```powershell
+# Create non-exportable certificate
+.\Setup-AuditWindowsApp.ps1 -NonExportable
+
+# Or respond "Y" when prompted in interactive mode
+```
+
+**Trade-offs:**
+- Private key cannot be exported (protection against theft)
+- Cannot backup or migrate to another machine
+- If certificate is lost, run `Setup-AuditWindowsApp.ps1` again to regenerate
+
+### Option 3: Azure Key Vault (Production Recommendation)
+
+Store certificate in Azure Key Vault for centralized, HSM-backed storage with audit logging.
+
+```powershell
+# Setup with Key Vault
+.\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'mykeyvault'
+
+# Run audit with Key Vault certificate
+.\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<tenant-id>' -UseKeyVault -VaultName 'mykeyvault'
+```
+
+**Prerequisites:**
+1. Azure Key Vault with appropriate permissions
+2. `Az.KeyVault` PowerShell module: `Install-Module -Name Az.KeyVault -Scope CurrentUser`
+3. Azure authentication: `Connect-AzAccount`
+
+**For HSM-backed keys** (recommended for production):
+```bash
+az keyvault create --name 'mykeyvault' --resource-group 'mygroup' --sku premium --location 'eastus'
+```
+
+**Trade-offs:**
+- Highest security with HSM backing (Premium SKU)
+- Centralized management and audit logging
+- Certificate rotation without re-deploying scripts
+- Requires Azure infrastructure and authentication
+
+### Certificate Expiration Monitoring
+
+The tool includes automatic certificate health checks that warn when certificates are expiring.
+
+```powershell
+# Standalone health check
+$health = Test-AuditWindowsCertificateHealth -WarningDaysBeforeExpiry 30
+if (-not $health.Healthy) {
+    Write-Warning $health.Message
+}
+
+# Automatic check during audit (enabled by default)
+.\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<tenant-id>'
+
+# Suppress automatic health check
+.\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<tenant-id>' -SkipCertificateHealthCheck
+```
+
+**Recommendations:**
+- Set up scheduled monitoring for certificate expiration (30-day warning threshold)
+- For Key Vault, configure certificate auto-renewal policies
+- Document certificate renewal procedures in your runbook
+
 ## Security notes
 
 - The script never prints BitLocker keys or LAPS passwords to console or logs.
 - Only existence/backup status is recorded in XML/CSV.
 - When using app-only auth, a self-signed certificate is stored in `Cert:\CurrentUser\My` (unless you supply another). Protect/export it appropriately for automation scenarios.
+- **Recommended:** Use `-NonExportable` for single-machine deployments or `-UseKeyVault` for multi-machine or production environments.
 
 ## Troubleshooting
 
@@ -306,5 +410,6 @@ When `-ExportCSV` is used, the CSV also includes:
 - Compliance policy status (Intune)
 - Richer ManagedDevice fields
 - Optional HTML report
-- Package as a PowerShell module; optional Key Vault storage for certificate/private key; support managed identity where feasible
+- Package as a PowerShell module
+- Support managed identity for Azure-hosted scenarios
 

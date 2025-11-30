@@ -21,6 +21,17 @@
     Skip certificate registration entirely. Use this for interactive-only authentication.
 .PARAMETER SkipCertificateExport
     Skip exporting the certificate to .cer and .pfx files. The certificate remains in Cert:\CurrentUser\My.
+.PARAMETER NonExportable
+    Create the certificate with KeyExportPolicy NonExportable. This prevents the private key from being exported,
+    providing stronger protection against credential theft. Trade-off: the certificate cannot be backed up or
+    migrated to another machine. If the certificate is lost, you must run this script again to generate a new one.
+.PARAMETER UseKeyVault
+    Use Azure Key Vault for certificate storage instead of the local certificate store. Provides centralized,
+    HSM-backed (with Premium SKU) certificate storage with audit logging.
+.PARAMETER VaultName
+    Name of the Azure Key Vault to use. Required when -UseKeyVault is specified.
+.PARAMETER KeyVaultCertificateName
+    Name of the certificate in Key Vault. Default: 'AuditWindowsCert'
 .PARAMETER TenantId
     Target tenant ID. If not specified, uses the default tenant from the authenticated context.
 .PARAMETER Force
@@ -57,6 +68,10 @@ param(
   [string]$ExistingCertificateThumbprint,
   [switch]$SkipCertificate,
   [switch]$SkipCertificateExport,
+  [switch]$NonExportable,
+  [switch]$UseKeyVault,
+  [string]$VaultName,
+  [string]$KeyVaultCertificateName = 'AuditWindowsCert',
   [string]$TenantId,
   [switch]$Force,
   [switch]$Reauth,
@@ -126,6 +141,21 @@ if (-not $SkipCertificate -and -not $Force) {
   }
 }
 
+# Prompt for non-exportable certificate if not already specified via parameter
+if (-not $SkipCertificate -and -not $NonExportable -and -not $ExistingCertificateThumbprint -and -not $Force) {
+  Write-Host ""
+  Write-Host "Certificate Export Policy:" -ForegroundColor Cyan
+  Write-Host "  - Exportable: Private key can be backed up/migrated (less secure)" -ForegroundColor Gray
+  Write-Host "  - Non-Exportable: Private key cannot be exported (more secure, no backup)" -ForegroundColor Gray
+  $nonExportResponse = Read-Host -Prompt "Create non-exportable certificate? (recommended for security) (Y/n)"
+  if ($nonExportResponse -notmatch '^[Nn]') {
+    $NonExportable = $true
+    Write-Host "Certificate will be created as non-exportable." -ForegroundColor Green
+  } else {
+    Write-Host "Certificate will be created as exportable." -ForegroundColor Yellow
+  }
+}
+
 Confirm-AuditWindowsAction -Message "`nProceed with creating/updating the Audit Windows application registration?" -Force:$Force
 
 # Create/update application
@@ -143,12 +173,64 @@ Set-AuditWindowsPermissions -Application $app -ServicePrincipal $sp
 # Add certificate credential (optional - only needed for app-only auth)
 $certificate = $null
 if (-not $SkipCertificate) {
-  $certificate = Set-AuditWindowsKeyCredential `
-    -Application $app `
-    -CertificateSubject $CertificateSubject `
-    -CertificateValidityInMonths $CertificateValidityInMonths `
-    -ExistingCertificateThumbprint $ExistingCertificateThumbprint `
-    -SkipExport:$SkipCertificateExport
+  if ($UseKeyVault) {
+    # Key Vault certificate storage
+    if (-not $VaultName) {
+      throw "-VaultName is required when using -UseKeyVault."
+    }
+
+    Write-Host "`nUsing Azure Key Vault for certificate storage..." -ForegroundColor Cyan
+    Write-Host "Vault: $VaultName" -ForegroundColor Cyan
+    Write-Host "Certificate: $KeyVaultCertificateName" -ForegroundColor Cyan
+
+    $kvResult = Get-AuditWindowsKeyVaultCertificate `
+      -VaultName $VaultName `
+      -CertificateName $KeyVaultCertificateName `
+      -CreateIfMissing `
+      -ValidityInMonths $CertificateValidityInMonths `
+      -Subject $CertificateSubject
+
+    if (-not $kvResult.Success) {
+      throw "Key Vault certificate operation failed: $($kvResult.Message)"
+    }
+
+    $certificate = $kvResult.Certificate
+    Write-Host "Certificate retrieved from Key Vault (Thumbprint: $($certificate.Thumbprint))" -ForegroundColor Green
+
+    # Attach certificate to application
+    $existingKey = Find-AuditWindowsKeyCredential -KeyCredentials $app.KeyCredentials -Thumbprint $certificate.Thumbprint
+    if (-not $existingKey) {
+      Write-Host 'Attaching Key Vault certificate to application...' -ForegroundColor Cyan
+
+      $keyCredential = @{
+        Type             = 'AsymmetricX509Cert'
+        Usage            = 'Verify'
+        Key              = $certificate.RawData
+        DisplayName      = "AuditWindows-KeyVault-$($certificate.Thumbprint)"
+        StartDateTime    = $certificate.NotBefore
+        EndDateTime      = $certificate.NotAfter
+      }
+
+      if ($app.KeyCredentials -and $app.KeyCredentials.Count -gt 0) {
+        Write-Host "Note: Replacing $($app.KeyCredentials.Count) existing certificate(s) with Key Vault certificate." -ForegroundColor Yellow
+      }
+
+      Update-MgApplication -ApplicationId $app.Id -KeyCredentials @($keyCredential) -ErrorAction Stop | Out-Null
+      Write-Host 'Key Vault certificate attached successfully.' -ForegroundColor Green
+    } else {
+      Write-Host 'Key Vault certificate is already attached to the application.' -ForegroundColor Green
+    }
+  }
+  else {
+    # Local certificate store
+    $certificate = Set-AuditWindowsKeyCredential `
+      -Application $app `
+      -CertificateSubject $CertificateSubject `
+      -CertificateValidityInMonths $CertificateValidityInMonths `
+      -ExistingCertificateThumbprint $ExistingCertificateThumbprint `
+      -SkipExport:$SkipCertificateExport `
+      -NonExportable:$NonExportable
+  }
 } else {
   Write-Host "`nSkipping certificate registration (interactive auth only)." -ForegroundColor Yellow
 }

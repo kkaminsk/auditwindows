@@ -2,6 +2,24 @@ function Set-AuditWindowsKeyCredential {
   <#
     .SYNOPSIS
     Adds a certificate credential to the Audit Windows application.
+    .DESCRIPTION
+    Creates or uses an existing certificate for app-only authentication. Supports both exportable
+    and non-exportable certificates. Non-exportable certificates provide stronger security by
+    preventing private key extraction, but cannot be backed up or migrated.
+    .PARAMETER Application
+    The application object to attach the certificate to.
+    .PARAMETER CertificateSubject
+    Subject name for the certificate. Default: 'CN=AuditWindowsCert'
+    .PARAMETER CertificateValidityInMonths
+    Validity period for generated certificates (1-60 months). Default: 24
+    .PARAMETER ExistingCertificateThumbprint
+    Thumbprint of an existing certificate to use instead of generating a new one.
+    .PARAMETER SkipExport
+    Skip exporting the certificate to .cer and .pfx files.
+    .PARAMETER NonExportable
+    Create the certificate with KeyExportPolicy NonExportable. This prevents the private key from
+    being exported, providing stronger protection against credential theft. Trade-off: the
+    certificate cannot be backed up or migrated. If lost, regenerate using this script.
     .OUTPUTS
     Returns the certificate object.
   #>
@@ -11,7 +29,8 @@ function Set-AuditWindowsKeyCredential {
     [string]$CertificateSubject = 'CN=AuditWindowsCert',
     [int]$CertificateValidityInMonths = 24,
     [string]$ExistingCertificateThumbprint,
-    [switch]$SkipExport
+    [switch]$SkipExport,
+    [switch]$NonExportable
   )
 
   $certificate = $null
@@ -29,13 +48,14 @@ function Set-AuditWindowsKeyCredential {
   }
   else {
     # Generate new self-signed certificate
-    Write-Host "Generating new self-signed certificate with subject '$CertificateSubject'..." -ForegroundColor Cyan
+    $exportPolicy = if ($NonExportable) { 'NonExportable' } else { 'Exportable' }
+    Write-Host "Generating new self-signed certificate with subject '$CertificateSubject' (KeyExportPolicy: $exportPolicy)..." -ForegroundColor Cyan
     $notAfter = (Get-Date).AddMonths($CertificateValidityInMonths)
 
     $certificate = New-SelfSignedCertificate `
       -Subject $CertificateSubject `
       -CertStoreLocation 'Cert:\CurrentUser\My' `
-      -KeyExportPolicy Exportable `
+      -KeyExportPolicy $exportPolicy `
       -KeySpec Signature `
       -KeyLength 2048 `
       -KeyAlgorithm RSA `
@@ -45,15 +65,20 @@ function Set-AuditWindowsKeyCredential {
 
     Write-Host "Certificate generated: $($certificate.Subject) (Thumbprint: $($certificate.Thumbprint), Expires: $notAfter)" -ForegroundColor Green
 
-    # Export certificate artifacts (optional)
-    if (-not $SkipExport) {
+    if ($NonExportable) {
+      # Non-exportable certificates cannot be backed up - skip export prompts entirely
+      Write-Host "Certificate created with non-exportable private key (cannot be backed up or migrated)." -ForegroundColor Yellow
+      Write-Host "If this certificate is lost, run this script again to generate a new one." -ForegroundColor Gray
+    }
+    elseif (-not $SkipExport) {
+      # Export certificate artifacts (optional) - only for exportable certificates
       $skipBackup = Read-Host -Prompt 'Skip certificate file backup? (y/N)'
       if ($skipBackup -eq 'y' -or $skipBackup -eq 'Y') {
         Write-Host "Certificate file export skipped (stored in Cert:\CurrentUser\My)." -ForegroundColor Yellow
       }
       else {
         $paths = Get-AuditWindowsCertificateArtifactPaths -BaseName ($CertificateSubject -replace '^CN=', '')
-        
+
         # Export .cer (public key only)
         Export-Certificate -Cert $certificate -FilePath $paths.Cer -Type CERT | Out-Null
         Write-Host "Public certificate exported to: $($paths.Cer)" -ForegroundColor Green
