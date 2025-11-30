@@ -42,8 +42,8 @@
 
 ## 5. Validation
 
-- [ ] 5.1 Test non-exportable certificate creation and authentication
-- [ ] 5.2 Test certificate health check with valid, expiring, and expired certificates
-- [ ] 5.3 Test Key Vault integration (certificate retrieval and creation)
-- [ ] 5.4 Verify backward compatibility with existing exportable certificates
-- [ ] 5.5 Verify error handling when Key Vault is unavailable
+- [x] 5.1 Test non-exportable certificate creation and authentication
+- [x] 5.2 Test certificate health check with valid, expiring, and expired certificates
+- [x] 5.3 Test Key Vault integration (certificate retrieval and creation)
+- [x] 5.4 Verify backward compatibility with existing exportable certificates
+- [x] 5.5 Verify error handling when Key Vault is unavailable

@@ -35,8 +35,7 @@ function Confirm-AuditWindowsAction {
     return
   }
 
-  $response = Read-Host -Prompt "$Message (Y/n)"
-  if ($response -match '^[Nn]') {
+  if (-not (Read-AuditWindowsYesNo -Prompt $Message -Default 'Y')) {
     throw 'Operation cancelled by user.'
   }
 }

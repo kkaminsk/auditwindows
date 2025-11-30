@@ -13,6 +13,9 @@ Get-AuditWindowsKeyVaultCertificate
     -VaultName <string>
     [-CertificateName <string>]
     [-CreateIfMissing]
+    [-CreateVaultIfMissing]
+    [-ResourceGroupName <string>]
+    [-Location <string>]
     [-ValidityInMonths <int>]
     [-Subject <string>]
 ```
@@ -24,6 +27,9 @@ Get-AuditWindowsKeyVaultCertificate
 | `-VaultName` | string | (required) | Name of the Azure Key Vault |
 | `-CertificateName` | string | `'AuditWindowsCert'` | Name of the certificate in Key Vault |
 | `-CreateIfMissing` | switch | — | Create the certificate if it doesn't exist |
+| `-CreateVaultIfMissing` | switch | — | Create the Key Vault if it doesn't exist |
+| `-ResourceGroupName` | string | — | Resource group for new vault (required with `-CreateVaultIfMissing`) |
+| `-Location` | string | — | Azure region for new vault (required with `-CreateVaultIfMissing`) |
 | `-ValidityInMonths` | int | `24` | Validity period for new certificates |
 | `-Subject` | string | `'CN=AuditWindowsCert'` | Subject name for new certificates |
 
@@ -76,6 +82,12 @@ $result = Get-AuditWindowsKeyVaultCertificate -VaultName 'mykeyvault' -CreateIfM
 
 ```powershell
 $result = Get-AuditWindowsKeyVaultCertificate -VaultName 'mykeyvault' -CertificateName 'AuditWindowsProd'
+```
+
+### Create vault and certificate if missing
+
+```powershell
+$result = Get-AuditWindowsKeyVaultCertificate -VaultName 'mykeyvault' -CreateIfMissing -CreateVaultIfMissing -ResourceGroupName 'rg-audit' -Location 'eastus'
 ```
 
 ## Security Benefits
