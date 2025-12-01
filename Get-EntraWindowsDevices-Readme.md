@@ -2,11 +2,14 @@
 
 Queries Windows devices from Microsoft Entra ID (Azure AD) and retrieves security audit information including BitLocker recovery keys and LAPS availability.
 
+**Version:** 1.2 (2025-11-26)
+
 ## Prerequisites
 
 - PowerShell 7.0 or later
 - Microsoft Graph PowerShell SDK modules (installed automatically)
 - Appropriate permissions (see Authentication Methods below)
+- For Key Vault: `Az.Accounts` and `Az.KeyVault` modules
 
 ## Quick Start
 
@@ -64,8 +67,12 @@ Uses a certificate stored in Azure Key Vault. Best for enterprise environments w
 
 **Setup (one-time):**
 ```powershell
-# Create app registration with Key Vault certificate storage
+# Create app registration with existing Key Vault
 .\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'mykeyvault'
+
+# Or auto-provision Key Vault and resource group
+.\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'auditwindows-kv' `
+  -CreateVaultIfMissing -KeyVaultResourceGroupName 'auditwindows-rg' -KeyVaultLocation 'eastus'
 ```
 
 **Usage:**
@@ -75,8 +82,14 @@ Uses a certificate stored in Azure Key Vault. Best for enterprise environments w
 
 **Download certificate to a new machine:**
 ```powershell
-# Use this utility to download the Key Vault certificate to your local store
+# Interactive mode - select from JSON configs or browse Azure
+.\Get-KeyVaultCertificateLocal.ps1
+
+# Direct download to computer store (for scheduled tasks, requires admin)
 .\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault'
+
+# Download to user store (for interactive use only)
+.\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault' -CurrentUser
 ```
 
 ## Parameters
@@ -141,7 +154,11 @@ The script generates files in the output directory (default: My Documents):
 **One-time setup (run as Administrator):**
 ```powershell
 # Download certificate to computer store for scheduled task access
-.\Get-KeyVaultCertificateLocal.ps1 -VaultName 'audit-keyvault' -LocalMachine
+# Default is LocalMachine store when run as admin
+.\Get-KeyVaultCertificateLocal.ps1 -VaultName 'audit-keyvault'
+
+# Or use interactive mode to select from existing configs
+.\Get-KeyVaultCertificateLocal.ps1
 ```
 
 **Scheduled task command:**
@@ -174,11 +191,14 @@ To use Key Vault certificate storage, you need these roles on the Key Vault:
 When setting up a new machine that needs to run the script with app-only auth:
 
 ```powershell
-# For interactive use - download to current user's store
+# Interactive mode - select from JSON configs or browse Azure subscriptions
+.\Get-KeyVaultCertificateLocal.ps1
+
+# For scheduled tasks/services - download to computer store (default, requires Admin)
 .\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault'
 
-# For scheduled tasks/services - download to computer store (requires Admin)
-.\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault' -LocalMachine
+# For interactive use only - download to current user's store
+.\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault' -CurrentUser
 
 # Then run the audit
 .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId 'contoso.onmicrosoft.com' -UseKeyVault -VaultName 'mykeyvault'
@@ -227,11 +247,22 @@ Certificate 'AuditWindowsCert' not found in Key Vault
 
 ### Certificate Expiring Soon
 
-The script warns when certificates expire within 90 days. To renew:
+The script warns when certificates expire within 30 days (default threshold). To check certificate health:
 
 ```powershell
+# Check certificate health manually
+$health = Test-AuditWindowsCertificateHealth
+if (-not $health.Healthy) {
+    Write-Warning $health.Message
+}
+
 # Re-run setup to generate a new certificate
 .\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'myvault'
+```
+
+To skip the automatic health check during audit:
+```powershell
+.\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId 'contoso.onmicrosoft.com' -SkipCertificateHealthCheck
 ```
 
 ### App Registration Not Found
@@ -252,7 +283,20 @@ Application 'Audit Windows' not found
 ## Security Considerations
 
 - **App-only authentication** is recommended for automated/scheduled execution
-- **Key Vault storage** provides centralized certificate management with audit logging
-- Certificates are created as **non-exportable** by default when using local storage
+- **Key Vault storage** provides centralized certificate management with audit logging and HSM backing (Premium SKU)
+- Use **non-exportable certificates** (`-NonExportable`) for stronger protection against credential theft
+- Use **LocalMachine store** for scheduled tasks and service accounts
 - Grant **minimum required permissions** to the app registration
 - Use **Conditional Access policies** to restrict app access if needed
+- **Certificate health monitoring** warns when certificates are expiring soon
+
+## Version History
+
+### 1.2 (2025-11-26)
+- Enhanced certificate storage options (non-exportable, Key Vault auto-provisioning)
+- Certificate health monitoring with expiration warnings
+- Support for LocalMachine certificate store
+- Interactive Key Vault selection via `Get-KeyVaultCertificateLocal.ps1`
+
+### 1.0 (2025-10-08)
+- Initial release

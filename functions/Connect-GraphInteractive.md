@@ -4,7 +4,10 @@ Connects to Microsoft Graph with delegated authentication using a dedicated app 
 
 ## Parameters
 
-None. Uses script-scope variables `$AppDisplayName` and `$UseDeviceCode`.
+None. Uses script-scope variables:
+- `$script:AppDisplayName` - App registration name (default: "Audit Windows")
+- `$script:TenantId` - Target tenant ID
+- `$script:UseDeviceCode` - Use device code flow instead of browser
 
 ## Scopes Requested
 

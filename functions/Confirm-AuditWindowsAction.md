@@ -11,9 +11,9 @@ Prompts for user confirmation before proceeding.
 
 ## Behavior
 
-- If `-Force`: Returns immediately
-- Otherwise: Prompts `{Message} (y/N)`
-- Throws if user doesn't confirm
+- If `-Force`: Returns immediately (no prompt)
+- Otherwise: Prompts `{Message} (Y/n)` with default Yes
+- Throws `'Operation cancelled by user.'` if user enters 'n' or 'N'
 
 ## Example
 

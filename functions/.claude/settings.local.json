@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for:*)",
+      "Bash(do base=\"$f%.ps1\")",
+      "Bash(if [ ! -f \"$base.md\" ])",
+      "Bash(then echo \"Missing: $base.md\")",
+      "Bash(fi)",
+      "Bash(done)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

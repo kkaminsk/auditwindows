@@ -6,9 +6,9 @@ This document describes the step-by-step execution flow of the `Get-EntraWindows
 
 ## Overview
 
-The script connects to Microsoft Graph, enumerates all Windows devices from Entra ID, enriches each device with Intune, BitLocker, and LAPS data, then outputs results to XML (and optionally CSV) reports.
+The script connects to Microsoft Graph, enumerates all Windows devices from Entra ID, enriches each device with Intune, BitLocker, and LAPS data, then outputs results to XML (and optionally CSV) reports. Supports multiple authentication methods including interactive, app-only with local certificate, and app-only with Azure Key Vault certificate.
 
-**Total Phases**: 7  
+**Total Phases**: 7
 **Estimated Duration**: Varies by device count (1-2 seconds per device)
 
 ---
@@ -17,12 +17,12 @@ The script connects to Microsoft Graph, enumerates all Windows devices from Entr
 
 ### Phase 1: Initialization and Setup
 
-**Lines**: 1-33
+**Lines**: 1-37
 
 | Step | Action | Details |
 |------|--------|---------|
 | 1.1 | Verify PowerShell 7+ | `#Requires -Version 7.0` directive |
-| 1.2 | Parse parameters | Accept `OutputPath`, `ExportCSV`, `UseDeviceCode`, `MaxDevices`, `UseAppAuth`, etc. |
+| 1.2 | Parse parameters | Accept `OutputPath`, `ExportCSV`, `UseDeviceCode`, `MaxDevices`, `UseAppAuth`, `UseKeyVault`, etc. |
 | 1.3 | Initialize timestamps | `$start = Get-Date`, generate timestamp string `yyyy-MM-dd-HH-mm` |
 | 1.4 | Set output paths | Default to `%USERPROFILE%\Documents` or use `-OutputPath` |
 | 1.5 | Create output directory | `New-Item -ItemType Directory` if path doesn't exist |
@@ -41,16 +41,17 @@ WindowsAudit-YYYY-MM-DD-HH-MM.csv (if -ExportCSV)
 
 ### Phase 2: Load Microsoft Graph Modules
 
-**Lines**: 40-45  
+**Lines**: 44-49
 **Function**: `Import-GraphModuleIfNeeded`
 
 | Step | Action | Details |
 |------|--------|---------|
-| 2.1 | Check if commands already available | Skips import if all required cmdlets exist |
-| 2.2 | Determine required modules | Base: Authentication, DirectoryManagement, DeviceManagement |
-| 2.3 | Add app modules if needed | Applications, ServicePrincipals (only for `-UseAppAuth`) |
-| 2.4 | Install missing modules | `Install-Module -Scope CurrentUser` if not available |
-| 2.5 | Import modules | `Import-Module` with fallback to REST if import fails |
+| 2.1 | Check if `-SkipModuleImport` | Skips module import if specified |
+| 2.2 | Check if commands already available | Skips import if all required cmdlets exist |
+| 2.3 | Determine required modules | Base: Authentication, DirectoryManagement, DeviceManagement |
+| 2.4 | Add app modules if needed | Applications, ServicePrincipals (only for `-UseAppAuth`) |
+| 2.5 | Install missing modules | `Install-Module -Scope CurrentUser` if not available |
+| 2.6 | Import modules | `Import-Module` with fallback to REST if import fails |
 
 **Modules Loaded**:
 - `Microsoft.Graph.Authentication`
@@ -65,9 +66,9 @@ WindowsAudit-YYYY-MM-DD-HH-MM.csv (if -ExportCSV)
 
 ### Phase 3: Connect to Microsoft Graph
 
-**Lines**: 46-51
+**Lines**: 50-113
 
-Two authentication paths based on `-UseAppAuth` parameter:
+Three authentication paths based on `-UseAppAuth` and `-UseKeyVault` parameters:
 
 #### Path A: Delegated (Interactive) Authentication
 
@@ -87,17 +88,33 @@ Two authentication paths based on `-UseAppAuth` parameter:
 - `DeviceLocalCredential.ReadBasic.All`
 - `DeviceManagementManagedDevices.Read.All`
 
-#### Path B: App-Only (Certificate) Authentication
+#### Path B: App-Only with Key Vault Certificate (`-UseAppAuth -UseKeyVault`)
 
-**Function**: `Initialize-AppRegistrationAndConnect`
+**Functions**: `Get-AuditWindowsKeyVaultCertificate`, `Test-AuditWindowsCertificateHealth`
 
 | Step | Action | Details |
 |------|--------|---------|
 | 3B.1 | Validate `-TenantId` provided | Throws if missing |
-| 3B.2 | **If `-CreateAppIfMissing`**: Provision app | Admin auth → Create app → Create SP → Create cert → Grant permissions |
-| 3B.3 | Locate certificate | `Get-ChildItem Cert:\CurrentUser\My` by subject |
-| 3B.4 | Find application | `Get-MgApplication -Filter "displayName eq '$AppName'"` |
-| 3B.5 | Connect with certificate | `Connect-MgGraph -TenantId -ClientId -CertificateThumbprint` |
+| 3B.2 | Validate `-VaultName` provided | Throws if missing |
+| 3B.3 | Retrieve certificate from Key Vault | `Get-AuditWindowsKeyVaultCertificate -VaultName -CertificateName` |
+| 3B.4 | **Certificate health check** | `Test-AuditWindowsCertificateHealth` (unless `-SkipCertificateHealthCheck`) |
+| 3B.5 | Warn if expiring/expired | Display warning, log to file |
+| 3B.6 | Find application | `Get-MgApplication -Filter "displayName eq '$AppName'"` via device code auth |
+| 3B.7 | Connect with certificate | `Connect-MgGraph -TenantId -ClientId -CertificateThumbprint` |
+
+#### Path C: App-Only with Local Certificate (`-UseAppAuth`)
+
+**Functions**: `Initialize-AppRegistrationAndConnect`, `Test-AuditWindowsCertificateHealth`
+
+| Step | Action | Details |
+|------|--------|---------|
+| 3C.1 | Validate `-TenantId` provided | Throws if missing |
+| 3C.2 | **Certificate health check** | `Test-AuditWindowsCertificateHealth` by subject (unless `-SkipCertificateHealthCheck`) |
+| 3C.3 | Warn if expiring/expired | Display warning, log to file |
+| 3C.4 | **If `-CreateAppIfMissing`**: Provision app | Admin auth → Create app → Create SP → Create cert → Grant permissions |
+| 3C.5 | Locate certificate | `Get-ChildItem Cert:\CurrentUser\My` by subject |
+| 3C.6 | Find application | `Get-MgApplication -Filter "displayName eq '$AppName'"` |
+| 3C.7 | Connect with certificate | `Connect-MgGraph -TenantId -ClientId -CertificateThumbprint` |
 
 **Required Permissions** (application):
 - `Device.Read.All`
@@ -105,11 +122,13 @@ Two authentication paths based on `-UseAppAuth` parameter:
 - `DeviceLocalCredential.ReadBasic.All`
 - `DeviceManagementManagedDevices.Read.All`
 
+**Certificate Health Check**: Warns if certificate is expired or within 30 days of expiry. Can be suppressed with `-SkipCertificateHealthCheck`.
+
 ---
 
 ### Phase 4: Query Windows Devices
 
-**Lines**: 53-68  
+**Lines**: 115-130
 **Function**: `Get-WindowsDirectoryDevices`
 
 | Step | Action | Graph API |
@@ -140,7 +159,7 @@ GET /devices
 
 ### Phase 5: Initialize XML Report
 
-**Lines**: 70-72  
+**Lines**: 132-134
 **Function**: `New-AuditXml`
 
 | Step | Action | Details |
@@ -154,7 +173,7 @@ GET /devices
 
 ### Phase 6: Process Each Device (Main Loop)
 
-**Lines**: 74-143
+**Lines**: 136-205
 
 For each device, the script performs enrichment queries and builds the XML/CSV output.
 
@@ -268,7 +287,7 @@ For each device, the script performs enrichment queries and builds the XML/CSV o
 
 ### Phase 7: Write Output and Complete
 
-**Lines**: 145-150
+**Lines**: 207-212
 
 | Step | Action | Details |
 |------|--------|---------|
@@ -384,6 +403,10 @@ For each device, the script performs enrichment queries and builds the XML/CSV o
 | `CertSubject` | string | - | Certificate subject for app-only auth |
 | `SkipModuleImport` | switch | - | Skip module imports, use REST fallback |
 | `DeviceName` | string | - | Filter to single device by name |
+| `SkipCertificateHealthCheck` | switch | - | Skip certificate expiration check |
+| `UseKeyVault` | switch | - | Use Azure Key Vault for certificate retrieval |
+| `VaultName` | string | - | Name of the Azure Key Vault (required with `-UseKeyVault`) |
+| `KeyVaultCertificateName` | string | `'AuditWindowsCert'` | Name of the certificate in Key Vault |
 
 ---
 
@@ -473,3 +496,40 @@ All Graph API calls use `Invoke-GraphWithRetry` which provides:
 - **Metadata only**: Only existence/backup status is recorded
 - **Read-only operations**: Script cannot modify any devices or credentials
 - **Audit logging**: All Graph calls logged with timestamps for audit trail
+- **Certificate health monitoring**: Warns if certificate is expired or expiring within 30 days
+
+---
+
+## Certificate Health Check
+
+When using `-UseAppAuth`, the script performs an automatic certificate health check before connecting (unless `-SkipCertificateHealthCheck` is specified).
+
+**Function**: `Test-AuditWindowsCertificateHealth`
+
+| Status | Condition | Behavior |
+|--------|-----------|----------|
+| Healthy | Certificate expires > 30 days | Logs status, proceeds normally |
+| Warning | Certificate expires ≤ 30 days | Displays warning, logs warning, proceeds |
+| Expired | Certificate already expired | Displays warning, logs warning, proceeds (may fail auth) |
+| Not Found | Certificate not in store | Throws exception |
+
+**Health Check Output**:
+```powershell
+[PSCustomObject]@{
+  Healthy         = $true/$false
+  DaysUntilExpiry = <integer>  # Negative if expired
+  Certificate     = <cert>     # Or $null if not found
+  Message         = "Human-readable status"
+}
+```
+
+---
+
+## Authentication Methods Summary
+
+| Method | Parameters | Use Case |
+|--------|------------|----------|
+| Interactive | (none) | Manual execution, user present |
+| Device Code | `-UseDeviceCode` | Headless systems, remote sessions |
+| App-Only (Local) | `-UseAppAuth -TenantId` | Automation with local certificate |
+| App-Only (Key Vault) | `-UseAppAuth -UseKeyVault -VaultName -TenantId` | Automation with centralized certificate |

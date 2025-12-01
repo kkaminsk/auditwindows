@@ -10,6 +10,7 @@ Provisions app registration and connects with certificate auth (legacy inline pr
 | `Name` | string | No | `WindowsAuditApp` | App display name |
 | `Create` | switch | No | - | Create app if missing |
 | `Subject` | string | No | `CN=$Name` | Certificate subject |
+| `NonExportable` | switch | No | - | Create certificate with non-exportable private key |
 
 ## Behavior (with `-Create`)
 

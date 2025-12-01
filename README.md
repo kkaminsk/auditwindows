@@ -3,12 +3,18 @@ Windows Audit Application (PowerShell 7) to inventory Windows devices from Entra
 
 ## Version
 
-1.2 (2025-11-26)
+1.2 (2025-12-01)
 
 - Permissions reduced
 - Non-Interactive mode optional
   - Disabled by default
   - Certificate backup optional
+- **Enhanced certificate storage options**
+  - Non-exportable certificates (`-NonExportable`) for stronger security
+  - Azure Key Vault integration (`-UseKeyVault`) for centralized, HSM-backed storage
+  - Automatic Key Vault and resource group provisioning
+  - Certificate health monitoring with expiration warnings
+  - Support for `LocalMachine` certificate store (for scheduled tasks)
 - Two scripts for use
   - Setup script for custom application registration
     - Better access control
@@ -140,9 +146,14 @@ The `Setup-AuditWindowsApp.ps1` script automates the provisioning of a dedicated
 | `-SkipCertificate` | switch | — | Skip certificate registration (interactive auth only) |
 | `-SkipCertificateExport` | switch | — | Skip exporting certificate to `.cer`/`.pfx` files |
 | `-NonExportable` | switch | — | Create certificate with non-exportable private key |
+| `-CertificateStoreLocation` | string | `'CurrentUser'` | Certificate store location: `CurrentUser` or `LocalMachine` |
 | `-UseKeyVault` | switch | — | Use Azure Key Vault for certificate storage |
 | `-VaultName` | string | — | Name of the Azure Key Vault (required with `-UseKeyVault`) |
 | `-KeyVaultCertificateName` | string | `'AuditWindowsCert'` | Name of the certificate in Key Vault |
+| `-CreateVaultIfMissing` | switch | — | Create the Key Vault if it doesn't exist |
+| `-KeyVaultResourceGroupName` | string | — | Resource group for new Key Vault (with `-CreateVaultIfMissing`) |
+| `-KeyVaultLocation` | string | — | Azure region for new Key Vault (with `-CreateVaultIfMissing`) |
+| `-KeyVaultSubscriptionId` | string | — | Azure subscription for Key Vault operations |
 | `-TenantId` | string | — | Target tenant ID (defaults to authenticated context) |
 | `-Force` | switch | — | Skip confirmation prompts |
 | `-Reauth` | switch | — | Force re-authentication even if session exists |
@@ -178,6 +189,19 @@ pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -Reauth
 
 # Interactive auth only (skip certificate for app-only auth)
 pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -SkipCertificate
+
+# Create non-exportable certificate (more secure, cannot be backed up)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -NonExportable
+
+# Use Azure Key Vault for certificate storage (existing vault)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'mykeyvault'
+
+# Auto-provision Key Vault and resource group
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'auditwindows-kv' `
+  -CreateVaultIfMissing -KeyVaultResourceGroupName 'auditwindows-rg' -KeyVaultLocation 'eastus'
+
+# Use LocalMachine store for scheduled tasks (requires admin)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -CertificateStoreLocation LocalMachine
 ```
 
 #### Output Files
@@ -296,6 +320,8 @@ The Audit Windows tool supports multiple certificate storage options for app-onl
 | Additional infrastructure | None | None | Azure Key Vault |
 | Audit logging | Windows Security Log | Windows Security Log | Azure Monitor |
 | Recovery if lost | Restore from .pfx | Re-run setup script | Download from vault |
+| Auto-provisioning | N/A | N/A | Yes (`-CreateVaultIfMissing`) |
+| Store location options | CurrentUser, LocalMachine | CurrentUser, LocalMachine | CurrentUser, LocalMachine |
 
 ### Option 1: Exportable Certificate (Default)
 
@@ -335,17 +361,24 @@ Certificate with non-exportable private key. Cannot be backed up but provides st
 Store certificate in Azure Key Vault for centralized, HSM-backed storage with audit logging.
 
 ```powershell
-# Setup with Key Vault
+# Setup with existing Key Vault
 .\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'mykeyvault'
+
+# Auto-provision Key Vault and resource group
+.\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'auditwindows-kv' `
+  -CreateVaultIfMissing -KeyVaultResourceGroupName 'auditwindows-rg' -KeyVaultLocation 'eastus'
 
 # Run audit with Key Vault certificate
 .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<tenant-id>' -UseKeyVault -VaultName 'mykeyvault'
 ```
 
 **Prerequisites:**
-1. Azure Key Vault with appropriate permissions
+1. Azure Key Vault with appropriate permissions (or use `-CreateVaultIfMissing` to auto-provision)
 2. `Az.KeyVault` PowerShell module: `Install-Module -Name Az.KeyVault -Scope CurrentUser`
 3. Azure authentication: `Connect-AzAccount`
+4. Required Azure roles for Key Vault access:
+   - `Key Vault Certificates Officer` — Create and manage certificates
+   - `Key Vault Secrets User` — Download certificate with private key
 
 **For HSM-backed keys** (recommended for production):
 ```bash
@@ -356,25 +389,55 @@ az keyvault create --name 'mykeyvault' --resource-group 'mygroup' --sku premium 
 - Highest security with HSM backing (Premium SKU)
 - Centralized management and audit logging
 - Certificate rotation without re-deploying scripts
+- Auto-waits for RBAC propagation when creating new vaults
 - Requires Azure infrastructure and authentication
+
+### Certificate Store Locations
+
+By default, certificates are stored in `Cert:\CurrentUser\My`. For scheduled tasks or service accounts, use `-CertificateStoreLocation LocalMachine`:
+
+```powershell
+# Store in LocalMachine (requires admin privileges)
+.\Setup-AuditWindowsApp.ps1 -CertificateStoreLocation LocalMachine
+
+# Key Vault with LocalMachine store
+.\Setup-AuditWindowsApp.ps1 -UseKeyVault -VaultName 'mykeyvault' -CertificateStoreLocation LocalMachine
+```
+
+| Store Location | Use Case | Requirements |
+|----------------|----------|--------------|
+| `CurrentUser` | Interactive use, development | None |
+| `LocalMachine` | Scheduled tasks, service accounts | Run as Administrator |
 
 ### Certificate Expiration Monitoring
 
-The tool includes automatic certificate health checks that warn when certificates are expiring.
+The tool includes certificate health checks that warn when certificates are expiring. Use `Test-AuditWindowsCertificateHealth` to check certificate status:
 
 ```powershell
-# Standalone health check
-$health = Test-AuditWindowsCertificateHealth -WarningDaysBeforeExpiry 30
+# Check default certificate (CN=AuditWindowsCert)
+$health = Test-AuditWindowsCertificateHealth
 if (-not $health.Healthy) {
     Write-Warning $health.Message
 }
 
-# Automatic check during audit (enabled by default)
-.\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<tenant-id>'
+# Custom warning threshold (60 days instead of default 30)
+$health = Test-AuditWindowsCertificateHealth -WarningDaysBeforeExpiry 60
 
-# Suppress automatic health check
-.\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<tenant-id>' -SkipCertificateHealthCheck
+# Check specific certificate by thumbprint
+$health = Test-AuditWindowsCertificateHealth -CertificateThumbprint 'ABC123...'
+
+# Check certificate with custom subject
+$health = Test-AuditWindowsCertificateHealth -CertificateSubject 'CN=MyCustomCert'
 ```
+
+**Health Check Return Values:**
+
+| Property | Description |
+|----------|-------------|
+| `Healthy` | `$true` if valid and not expiring within threshold |
+| `DaysUntilExpiry` | Days until expiration (negative if expired) |
+| `Certificate` | The certificate object (or `$null` if not found) |
+| `Message` | Human-readable status message |
 
 **Recommendations:**
 - Set up scheduled monitoring for certificate expiration (30-day warning threshold)

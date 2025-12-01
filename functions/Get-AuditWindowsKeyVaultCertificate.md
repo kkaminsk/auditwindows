@@ -16,8 +16,10 @@ Get-AuditWindowsKeyVaultCertificate
     [-CreateVaultIfMissing]
     [-ResourceGroupName <string>]
     [-Location <string>]
+    [-CreateResourceGroupIfMissing]
     [-ValidityInMonths <int>]
     [-Subject <string>]
+    [-StoreLocation <string>]
 ```
 
 ## Parameters
@@ -30,8 +32,10 @@ Get-AuditWindowsKeyVaultCertificate
 | `-CreateVaultIfMissing` | switch | — | Create the Key Vault if it doesn't exist |
 | `-ResourceGroupName` | string | — | Resource group for new vault (required with `-CreateVaultIfMissing`) |
 | `-Location` | string | — | Azure region for new vault (required with `-CreateVaultIfMissing`) |
+| `-CreateResourceGroupIfMissing` | switch | — | Create the resource group if it doesn't exist |
 | `-ValidityInMonths` | int | `24` | Validity period for new certificates |
 | `-Subject` | string | `'CN=AuditWindowsCert'` | Subject name for new certificates |
+| `-StoreLocation` | string | `'CurrentUser'` | Certificate store location: `CurrentUser` or `LocalMachine` |
 
 ## Output
 

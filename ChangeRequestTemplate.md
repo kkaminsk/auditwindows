@@ -40,11 +40,14 @@ This change request seeks approval to create an Entra ID application registratio
 
 ### 3.2 Certificate Management
 
-- **Certificate Subject**: `CN=WindowsAuditApp` (configurable via `-CertSubject`)
-- **Storage Location**: `Cert:\CurrentUser\My` (user certificate store)
-- **Validity Period**: 2 years from creation
+- **Certificate Subject**: `CN=AuditWindowsCert` (configurable via `-CertificateSubject`)
+- **Storage Location**: `Cert:\CurrentUser\My` (default) or `Cert:\LocalMachine\My` (for scheduled tasks)
+- **Validity Period**: 24 months from creation (configurable 1-60 months)
 - **Key Length**: 2048-bit RSA
-- **Export Policy**: Exportable (for backup/transfer to automation systems)
+- **Export Policy Options**:
+  - **Exportable** (default): Can be backed up to `.pfx` file
+  - **Non-Exportable** (`-NonExportable`): Private key cannot be exported, stronger security
+  - **Azure Key Vault** (`-UseKeyVault`): Centralized, HSM-backed storage (recommended for production)
 
 ---
 
@@ -110,8 +113,15 @@ Once provisioned, the application registration (`WindowsAuditApp`) requires the 
 ### 5.2 Authentication Security
 
 - **Certificate-Based**: Uses a self-signed certificate instead of client secrets (secrets never expire accidentally and are more secure for automation).
-- **Private Key Protection**: The certificate private key is stored in the user certificate store. For production automation, export and store in Azure Key Vault or a secure credential store.
+- **Private Key Protection Options**:
+  - **Exportable** (default): Stored in certificate store; can be backed up but vulnerable to extraction
+  - **Non-Exportable** (`-NonExportable`): Private key cannot be exported, protecting against credential theft
+  - **Azure Key Vault** (`-UseKeyVault`): HSM-backed storage with audit logging (recommended for production)
+- **Certificate Store Locations**:
+  - `Cert:\CurrentUser\My`: For interactive use only
+  - `Cert:\LocalMachine\My`: For scheduled tasks and service accounts (requires admin)
 - **No User Context**: Application runs with app-only permissions; no user sign-in required.
+- **Certificate Health Monitoring**: Built-in expiration warnings (30-day default threshold)
 
 ### 5.3 Audit and Monitoring
 
@@ -138,11 +148,28 @@ Use `Setup-AuditWindowsApp.ps1` to create a dedicated "Audit Windows" app regist
 - Microsoft Graph PowerShell SDK installed (or auto-install enabled)
 - Administrator account with Application Administrator or Global Administrator role
 - Optional: `logo.jpg` in the script directory for app branding
+- For Key Vault: `Az.Accounts` and `Az.KeyVault` modules, Azure authentication
 
-**Command:**
+**Command Options:**
 ```powershell
-# Place logo.jpg in the script directory (optional)
+# Basic setup with exportable certificate (default)
 pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>' -Force
+
+# Non-exportable certificate (more secure, cannot be backed up)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>' -NonExportable -Force
+
+# Azure Key Vault storage (recommended for production)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>' `
+  -UseKeyVault -VaultName 'mykeyvault' -Force
+
+# Auto-provision Key Vault and resource group
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>' `
+  -UseKeyVault -VaultName 'auditwindows-kv' `
+  -CreateVaultIfMissing -KeyVaultResourceGroupName 'auditwindows-rg' -KeyVaultLocation 'eastus' -Force
+
+# LocalMachine store for scheduled tasks (requires admin)
+pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>' `
+  -CertificateStoreLocation LocalMachine -Force
 ```
 
 **Actions Performed:**
@@ -152,9 +179,9 @@ pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>'
 4. Configure the 4 required application permissions
 5. Create service principal for the application
 6. Grant admin consent for all permissions
-7. Create self-signed certificate in `Cert:\CurrentUser\My`
+7. Create/retrieve certificate (local store or Key Vault)
 8. Add certificate to application keyCredentials
-9. Output JSON summary to `AuditWindowsAppSummary.json`
+9. Output JSON summary to `Setup-AuditWindowsApp-{timestamp}.json`
 10. Open Entra Portal to the app's credentials blade
 
 **Usage after setup:**
@@ -162,8 +189,12 @@ pwsh -NoProfile -File .\Setup-AuditWindowsApp.ps1 -TenantId '<YOUR_TENANT_GUID>'
 # Delegated auth using the dedicated app (interactive)
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
 
-# App-only auth using certificate
+# App-only auth using local certificate
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>'
+
+# App-only auth using Key Vault certificate
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>' `
+  -UseKeyVault -VaultName 'mykeyvault'
 ```
 
 ### 6.2 Provisioning Option B: Inline Provisioning (Legacy)
@@ -196,23 +227,47 @@ pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 `
 8. Connect with app-only auth using the certificate
 9. Run a test query (first 5 devices) to validate
 
-### 6.2 Subsequent Execution (Automated/Scheduled)
+### 6.3 Subsequent Execution (Automated/Scheduled)
 
 **Prerequisites:**
-- Certificate present in `Cert:\CurrentUser\My` with subject `CN=WindowsAuditApp`
+- Certificate present in certificate store (`CurrentUser` or `LocalMachine`) or Azure Key Vault
 - Application registration exists and has admin-consented permissions
 
-**Command:**
+**Command Options:**
 ```powershell
+# Interactive auth (default)
 pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1
+
+# App-only with local certificate
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>'
+
+# App-only with Key Vault certificate
+pwsh -NoProfile -File .\Get-EntraWindowsDevices.ps1 -UseAppAuth -TenantId '<YOUR_TENANT_GUID>' `
+  -UseKeyVault -VaultName 'mykeyvault'
 ```
 
 **Actions Performed:**
-1. Locate certificate in certificate store
-2. Connect to Microsoft Graph using app-only auth (certificate)
-3. Query all Windows devices from Entra ID
-4. Enrich with Intune, BitLocker, and LAPS data
-5. Write XML report and log to `%USERPROFILE%\Documents`
+1. Locate certificate in certificate store or Key Vault
+2. Check certificate health (warns if expiring within 30 days)
+3. Connect to Microsoft Graph using app-only auth (certificate)
+4. Query all Windows devices from Entra ID
+5. Enrich with Intune, BitLocker, and LAPS data
+6. Write XML report and log to `%USERPROFILE%\Documents`
+
+### 6.4 Download Key Vault Certificate to New Machine
+
+When deploying to a new machine that needs to run scheduled tasks:
+
+```powershell
+# Interactive mode - select from JSON configs or browse Azure
+.\Get-KeyVaultCertificateLocal.ps1
+
+# Direct download to computer store (for scheduled tasks, requires admin)
+.\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault'
+
+# Download to user store (for interactive use only)
+.\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault' -CurrentUser
+```
 
 ---
 
@@ -236,15 +291,31 @@ Remove-MgApplication -ApplicationId $app.Id
 
 ### 7.2 Remove Certificate
 
-**Via Certificate Manager:**
+**Via Certificate Manager (CurrentUser):**
 1. Open `certmgr.msc`
 2. Navigate to **Personal** > **Certificates**
-3. Locate certificate with subject `CN=WindowsAuditApp`
+3. Locate certificate with subject `CN=AuditWindowsCert`
+4. Right-click > **Delete**
+
+**Via Certificate Manager (LocalMachine - requires admin):**
+1. Open `certlm.msc`
+2. Navigate to **Personal** > **Certificates**
+3. Locate certificate with subject `CN=AuditWindowsCert`
 4. Right-click > **Delete**
 
 **Via PowerShell:**
 ```powershell
-Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=WindowsAuditApp' } | Remove-Item
+# Remove from CurrentUser store
+Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=AuditWindowsCert' } | Remove-Item
+
+# Remove from LocalMachine store (requires admin)
+Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -eq 'CN=AuditWindowsCert' } | Remove-Item
+```
+
+**Via Azure Key Vault:**
+```powershell
+# Delete certificate from Key Vault
+Remove-AzKeyVaultCertificate -VaultName 'mykeyvault' -Name 'AuditWindowsCert'
 ```
 
 ### 7.3 Revoke Permissions
@@ -277,8 +348,12 @@ Permissions are automatically revoked when the application registration or servi
 
 - [ ] No BitLocker keys or LAPS passwords exposed in logs
 - [ ] Graph API calls logged in Entra ID audit logs under service principal
-- [ ] Certificate private key protected in user certificate store
+- [ ] Certificate private key protected appropriately:
+  - [ ] Non-exportable certificate cannot be extracted
+  - [ ] Key Vault certificate has appropriate RBAC permissions
+  - [ ] LocalMachine store requires admin access
 - [ ] Application cannot write/modify devices or credentials
+- [ ] Certificate health check warns when expiring soon
 
 ---
 
@@ -286,18 +361,34 @@ Permissions are automatically revoked when the application registration or servi
 
 ### 9.1 Certificate Management
 
-- **Renewal Reminder**: Set a calendar reminder for **[2 years - 30 days]** to renew the certificate before expiration.
-- **Backup**: Export the certificate (including private key) to a `.pfx` file and store in a secure location:
+- **Health Monitoring**: Use `Test-AuditWindowsCertificateHealth` to check certificate status:
   ```powershell
-  $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=WindowsAuditApp' }
-  $pwd = ConvertTo-SecureString -String 'YourSecurePassword' -Force -AsPlainText
-  Export-PfxCertificate -Cert $cert -FilePath 'C:\Secure\WindowsAuditApp.pfx' -Password $pwd
+  $health = Test-AuditWindowsCertificateHealth -WarningDaysBeforeExpiry 30
+  if (-not $health.Healthy) { Write-Warning $health.Message }
   ```
+- **Renewal Reminder**: Set a calendar reminder for **[certificate validity - 30 days]** to renew before expiration. The script warns automatically when certificates are expiring.
+- **Backup Options**:
+  - **Exportable certificates**: Export to `.pfx` file:
+    ```powershell
+    $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=AuditWindowsCert' }
+    $pwd = ConvertTo-SecureString -String 'YourSecurePassword' -Force -AsPlainText
+    Export-PfxCertificate -Cert $cert -FilePath 'C:\Secure\AuditWindowsCert.pfx' -Password $pwd
+    ```
+  - **Non-exportable certificates**: Re-run `Setup-AuditWindowsApp.ps1` to regenerate if lost
+  - **Key Vault certificates**: Automatically backed up in Azure; download to new machines with `Get-KeyVaultCertificateLocal.ps1`
 
 ### 9.2 Scheduled Execution
 
 - **Task Scheduler**: Create a scheduled task to run the script daily/weekly.
-- **Service Account**: Use a dedicated service account with access to the certificate store.
+- **Certificate Store**: Use `LocalMachine` store for scheduled tasks:
+  ```powershell
+  # Setup with LocalMachine store
+  .\Setup-AuditWindowsApp.ps1 -CertificateStoreLocation LocalMachine
+
+  # Or download Key Vault cert to LocalMachine (requires admin)
+  .\Get-KeyVaultCertificateLocal.ps1 -VaultName 'mykeyvault'
+  ```
+- **Service Account**: Can run as SYSTEM or any service account when using `Cert:\LocalMachine\My`.
 - **Centralized Storage**: Configure `-OutputPath` to write reports to a shared network location or Azure Storage.
 
 ### 9.3 Monitoring
@@ -335,10 +426,11 @@ Permissions are automatically revoked when the application registration or servi
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
 | Unauthorized access to BitLocker keys/LAPS | High | Low | Application only reads **metadata** (existence), not actual keys/passwords. All API calls logged. |
-| Certificate private key compromise | High | Low | Store in certificate store with ACLs; export to Azure Key Vault for production. |
+| Certificate private key compromise | High | Low | Use non-exportable certificates or Azure Key Vault (HSM-backed) for production. LocalMachine store requires admin access. |
 | Over-privileged application | Medium | Low | Least-privilege permissions; read-only access only. |
-| Certificate expiration | Medium | Medium | Set renewal reminder; monitor certificate validity. |
-| Service principal abuse | Medium | Low | Monitor Entra ID audit logs; alert on anomalous activity. |
+| Certificate expiration | Medium | Medium | Built-in health monitoring warns 30 days before expiry. Key Vault supports auto-renewal policies. |
+| Service principal abuse | Medium | Low | Monitor Entra ID audit logs; alert on anomalous activity. Key Vault provides additional audit logging. |
+| Key Vault access misconfiguration | Medium | Low | Requires explicit RBAC role assignment (Certificates Officer, Secrets User). |
 
 ---
 
@@ -355,6 +447,7 @@ Permissions are automatically revoked when the application registration or servi
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.2 | 2025-11-26 | Kevin Kaminski | Added Key Vault integration, non-exportable certificates, LocalMachine store, certificate health monitoring |
 | 1.0 | 2025-10-08 | Kevin Kaminski | Initial change request template |
 
 ---
@@ -363,5 +456,10 @@ Permissions are automatically revoked when the application registration or servi
 
 - The provisioning script can be run multiple times safely; it will reuse existing application and certificate if present.
 - For multi-tenant scenarios, adjust `-SignInAudience` and configure the application as `AzureADMultipleOrgs`.
-- If the organization uses Azure Key Vault for certificate storage, export the certificate and import to Key Vault after provisioning.
+- **Certificate Storage Recommendations**:
+  - **Development/Testing**: Exportable certificate in `CurrentUser` store (default)
+  - **Single-Machine Production**: Non-exportable certificate (`-NonExportable`)
+  - **Multi-Machine/Enterprise**: Azure Key Vault (`-UseKeyVault`) with HSM backing (Premium SKU)
+  - **Scheduled Tasks**: `LocalMachine` store (`-CertificateStoreLocation LocalMachine`)
 - The script supports delegated (interactive) auth as an alternative to app-only for ad-hoc queries.
+- Use `Get-KeyVaultCertificateLocal.ps1` to download Key Vault certificates to new machines for scheduled task deployment.

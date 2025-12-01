@@ -17,7 +17,11 @@ Application object (refreshed from API).
 
 - Creates new app if not found (single-tenant, `AzureADMyOrg`)
 - Returns existing app if found
-- Logs AppId on creation
+- Configures public client settings:
+  - `IsFallbackPublicClient = $true`
+  - Redirect URIs: `http://localhost`, `https://login.microsoftonline.com/common/oauth2/nativeclient`
+  - Homepage URL: `https://github.com/kkaminsk/auditwindows`
+- Auto-updates existing apps if settings are missing
 
 ## Example
 
