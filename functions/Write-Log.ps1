@@ -29,6 +29,7 @@ function Write-Log {
     [Parameter(Mandatory)][string]$Message,
     [ValidateSet('INFO','WARN','ERROR','DEBUG')][string]$Level='INFO'
   )
+  if (-not $script:logPath) { return }
   $line = ("[{0}] {1}: {2}" -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'), $Level, $Message)
   Add-Content -LiteralPath $script:logPath -Value $line
   switch ($Level) {

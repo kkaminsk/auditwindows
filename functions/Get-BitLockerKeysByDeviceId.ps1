@@ -28,6 +28,7 @@ function Get-BitLockerKeysByDeviceId {
     .NOTES
     Requires BitLockerKey.ReadBasic.All permission.
   #>
+  [CmdletBinding()]
   param([string]$azureId)
   Invoke-GraphWithRetry -OperationName 'Get-MgInformationProtectionBitlockerRecoveryKey' -Resource "GET /informationProtection/bitlocker/recoveryKeys?`$select=id,deviceId,createdDateTime,volumeType&`$filter=deviceId eq '$azureId'" -NonFatalStatusCodes @(404) -NonFatalReturn @() -Script {
     if (Get-Command Get-MgInformationProtectionBitlockerRecoveryKey -ErrorAction SilentlyContinue) {

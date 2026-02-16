@@ -1,4 +1,6 @@
 function Connect-GraphInteractive {
+  [CmdletBinding()]
+  param()
   <#
     .SYNOPSIS
     Connects to Microsoft Graph using the dedicated Audit Windows app registration.

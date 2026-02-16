@@ -8,5 +8,6 @@ function Get-AuditWindowsApplication {
     [string]$DisplayName
   )
 
-  return Get-MgApplication -Filter "displayName eq '$DisplayName'" -ErrorAction SilentlyContinue | Select-Object -First 1
+  $safeName = Protect-ODataFilterValue $DisplayName
+  return Get-MgApplication -Filter "displayName eq '$safeName'" -ErrorAction SilentlyContinue | Select-Object -First 1
 }

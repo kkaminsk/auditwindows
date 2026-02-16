@@ -1,4 +1,6 @@
 function Import-GraphModuleIfNeeded {
+  [CmdletBinding()]
+  param()
   <#
     .SYNOPSIS
     Imports Microsoft Graph PowerShell SDK modules required for device auditing.

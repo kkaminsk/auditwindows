@@ -26,19 +26,20 @@ function Invoke-GraphGetAll {
     .NOTES
     Requires an active Microsoft Graph connection via Connect-MgGraph.
   #>
+  [CmdletBinding()]
   param([Parameter(Mandatory=$true)][string]$RelativeUri)
   $uri = "https://graph.microsoft.com/v1.0$RelativeUri"
-  $acc = @()
+  $acc = [System.Collections.Generic.List[object]]::new()
   while ($true) {
     $res = Invoke-MgGraphRequest -Method GET -Uri $uri -OutputType PSObject -ErrorAction Stop
     if ($null -ne $res.value) {
-      $acc += $res.value
+      foreach ($item in $res.value) { $acc.Add($item) }
       if ($res.'@odata.nextLink') { $uri = $res.'@odata.nextLink' } else { break }
     } else {
       # not a collection response; return as single-element array
-      $acc += $res
+      $acc.Add($res)
       break
     }
   }
-  return $acc
+  return @($acc)
 }

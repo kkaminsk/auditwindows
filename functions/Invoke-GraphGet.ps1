@@ -26,6 +26,7 @@ function Invoke-GraphGet {
     Does not handle pagination. Use Invoke-GraphGetAll for paginated results.
     Requires an active Microsoft Graph connection via Connect-MgGraph.
   #>
+  [CmdletBinding()]
   param([Parameter(Mandatory=$true)][string]$RelativeUri)
   $uri = "https://graph.microsoft.com/v1.0$RelativeUri"
   Invoke-MgGraphRequest -Method GET -Uri $uri -OutputType PSObject -ErrorAction Stop

@@ -111,8 +111,8 @@ $ErrorActionPreference = 'Stop'
 # Initialize timestamp and output file paths
 $script:startTime = Get-Date
 $script:timestamp = $script:startTime.ToString('yyyy-MM-dd-HH-mm')
-$script:outputDir = if ($SummaryOutputPath) { Split-Path $SummaryOutputPath -Parent } else { $PSScriptRoot }
-if (-not $script:outputDir) { $script:outputDir = $PSScriptRoot }
+$script:outputDir = if ($SummaryOutputPath) { Split-Path $SummaryOutputPath -Parent } else { $env:USERPROFILE }
+if (-not $script:outputDir) { $script:outputDir = $env:USERPROFILE }
 $script:logPath = Join-Path $script:outputDir "Setup-AuditWindowsApp-$($script:timestamp).log"
 $script:jsonPath = Join-Path $script:outputDir "Setup-AuditWindowsApp-$($script:timestamp).json"
 

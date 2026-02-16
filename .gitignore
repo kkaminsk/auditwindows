@@ -1,0 +1,30 @@
+# Logs
+*.log
+
+# Certificate exports
+*.cer
+*.pfx
+*.pem
+
+# Setup output files
+Setup-AuditWindowsApp-*.json
+
+# Audit output files
+WindowsAudit-*.xml
+WindowsAudit-*.csv
+WindowsAudit-*.log
+
+# App summary files
+AuditWindowsAppSummary.json
+
+# PowerShell module cache
+PSModuleAnalysisCache
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -23,9 +23,11 @@ function Test-LapsAvailable {
     .NOTES
     Requires DeviceLocalCredential.ReadBasic.All permission.
   #>
+  [CmdletBinding()]
   param([string]$deviceName)
-  $r = Invoke-GraphWithRetry -OperationName 'GET /directory/deviceLocalCredentials' -Resource "GET /directory/deviceLocalCredentials?`$filter=deviceName eq '$deviceName'" -NonFatalStatusCodes @(404) -NonFatalReturn $null -Script {
-    Invoke-GraphGet "/directory/deviceLocalCredentials?`$filter=deviceName eq '$deviceName'"
+  $safeName = Protect-ODataFilterValue $deviceName
+  $r = Invoke-GraphWithRetry -OperationName 'GET /directory/deviceLocalCredentials' -Resource "GET /directory/deviceLocalCredentials?`$filter=deviceName eq '$safeName'" -NonFatalStatusCodes @(404) -NonFatalReturn $null -Script {
+    Invoke-GraphGet "/directory/deviceLocalCredentials?`$filter=deviceName eq '$safeName'"
   }
   return ($r -and $r.value -and $r.value.Count -gt 0)
 }

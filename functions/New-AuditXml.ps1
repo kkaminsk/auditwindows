@@ -1,4 +1,6 @@
 function New-AuditXml {
+  [CmdletBinding()]
+  param()
   <#
     .SYNOPSIS
     Creates a new XML document for the Windows audit report.

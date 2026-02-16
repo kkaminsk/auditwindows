@@ -1,4 +1,4 @@
-# auditwindows
+﻿# auditwindows
 Windows Audit Application (PowerShell 7) to inventory Windows devices from Entra ID via Microsoft Graph and report BitLocker and LAPS posture.
 
 ## Version

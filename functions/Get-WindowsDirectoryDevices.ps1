@@ -1,4 +1,6 @@
 function Get-WindowsDirectoryDevices {
+  [CmdletBinding()]
+  param()
   <#
     .SYNOPSIS
     Retrieves all Windows devices from Entra ID directory.

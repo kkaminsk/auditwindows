@@ -23,6 +23,7 @@ function Add-TextNode {
     Add-TextNode $xml $deviceElement 'Name' 'DESKTOP-ABC123'
     Creates <Name>DESKTOP-ABC123</Name> under the device element.
   #>
+  [CmdletBinding()]
   param($xml, $parent, $name, $value)
   $n = $xml.CreateElement($name)
   if ($null -ne $value -and "$value" -ne '') {
