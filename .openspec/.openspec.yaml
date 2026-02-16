@@ -1,0 +1,6 @@
+project: auditwindows
+version: "1.0"
+proposals:
+  - id: M-4
+    title: "Fix Setup script default log path to Documents folder"
+    status: approved

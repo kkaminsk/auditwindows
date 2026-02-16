@@ -111,8 +111,9 @@ $ErrorActionPreference = 'Stop'
 # Initialize timestamp and output file paths
 $script:startTime = Get-Date
 $script:timestamp = $script:startTime.ToString('yyyy-MM-dd-HH-mm')
-$script:outputDir = if ($SummaryOutputPath) { Split-Path $SummaryOutputPath -Parent } else { $env:USERPROFILE }
-if (-not $script:outputDir) { $script:outputDir = $env:USERPROFILE }
+$script:outputDir = if ($SummaryOutputPath) { Split-Path $SummaryOutputPath -Parent } else { [Environment]::GetFolderPath('MyDocuments') }
+if (-not $script:outputDir) { $script:outputDir = [Environment]::GetFolderPath('MyDocuments') }
+if (-not (Test-Path -LiteralPath $script:outputDir)) { New-Item -ItemType Directory -Path $script:outputDir -Force | Out-Null }
 $script:logPath = Join-Path $script:outputDir "Setup-AuditWindowsApp-$($script:timestamp).log"
 $script:jsonPath = Join-Path $script:outputDir "Setup-AuditWindowsApp-$($script:timestamp).json"
 
